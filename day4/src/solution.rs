@@ -1,7 +1,7 @@
 //use std::cmp::{max, min};
 use std::io::{BufRead, BufReader, Write};
-use regex::Regex;
-use lazy_static::lazy_static;
+//use regex::Regex;
+//use lazy_static::lazy_static;
 //use std::collections::{HashMap};
 
 macro_rules! dprintln {
@@ -15,80 +15,48 @@ macro_rules! dprintln {
 
 #[derive(Debug)]
 struct WordSearch {
-    lines: Vec<String>,
-    columns: Vec<String>,
-    left_diags: Vec<String>,
-    right_diags: Vec<String>,
-}
-
-fn count_xmas_in_coll(coll: &[String]) -> i64 {
-    lazy_static!{
-        static ref X_RE: Regex = Regex::new(r"XMAS").unwrap();
-        static ref S_RE: Regex = Regex::new(r"SAMX").unwrap();
-    }
-
-    let mut res: i64 = 0;
-
-    for l in coll {
-        res += X_RE.find_iter(l).count() as i64;
-        res += S_RE.find_iter(l).count() as i64;
-    }
-    res
+    lines: Vec<Vec<char>>,
 }
 
 impl WordSearch {
     fn from_input<I>(input: I) -> Self
         where I: Iterator<Item = String>
     {
-        let mut lines = Vec::<String>::new();
+        let mut lines = Vec::new();
         
         for l in input {
             let line = l.trim();
-            lines.push(line.to_owned());
+            lines.push(line.chars().collect());
         }
-
-        let mut columns = vec![String::new(); lines[0].len()];
-        for i in 0..lines[0].len() {
-            for j in 0..lines.len() {
-                columns[i].push_str(&lines[j][i..i+1]);
-            }
-        }
-        
-
-        let mut left_diags = vec![String::new(); lines[0].len() + lines.len() - 1];
-        let mut idx_st = 0;
-        for i in 0..lines[0].len() {
-            let mut idx = idx_st;
-            for j in (0..lines.len()).rev() {
-                left_diags[idx].push_str(&lines[j][i..i+1]);
-                idx += 1;
-            }
-            idx_st += 1;
-        }
-
-        let mut right_diags = vec![String::new(); lines[0].len() + lines.len() - 1];
-        idx_st = 0;
-        for i in (0..lines[0].len()).rev() {
-            let mut idx = idx_st;
-            for j in (0..lines.len()).rev() {
-                right_diags[idx].push_str(&lines[j][i..i+1]);
-                idx += 1;
-            }
-            idx_st += 1;
-        }
-        
         WordSearch {
             lines,
-            columns,
-            left_diags,
-            right_diags,
         }
     }
 
-    fn count_xmas(&self) -> i64 {
+    fn is_x_mas(&self, i: usize, j: usize) -> bool {
+        if i > self.lines[0].len() - 3 { return false; }
+        if j > self.lines.len() - 3 { return false; }
 
-        count_xmas_in_coll(&self.lines) + count_xmas_in_coll(&self.columns) +
-            count_xmas_in_coll(&self.left_diags) + count_xmas_in_coll(&self.right_diags)
+        let left_diag: String =
+            vec![self.lines[i][j], self.lines[i+1][j+1], self.lines[i+2][j+2]].into_iter().collect();
+        let right_diag: String =
+            vec![self.lines[i+2][j], self.lines[i+1][j+1], self.lines[i][j+2]].into_iter().collect();
+
+        (left_diag == "MAS" || left_diag == "SAM") &&
+            (right_diag == "MAS" || right_diag == "SAM")
+    }
+
+    fn count_x_mas(&self) -> i64 {
+        let mut res = 0;
+        for i in 0..self.lines[0].len() {
+            for j in 0..self.lines.len() {
+                if self.is_x_mas(i, j) {
+                    res += 1;
+                }
+            }
+        }
+        res
+        
     }
 }
 
@@ -98,7 +66,7 @@ fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
 
     dprintln!("words: {:?}", word_search);
 
-    writeln!(output, "{}", word_search.count_xmas()).unwrap();
+    writeln!(output, "{}", word_search.count_x_mas()).unwrap();
 }
 
 pub fn main() {
@@ -129,17 +97,17 @@ mod tests {
     #[test]
     fn sample() {
         test_ignore_whitespaces(
-            "....XXMAS.
-            .SAMXMS...
-            ...S..A...
-            ..A.A.MS.X
-            XMASAMX.MM
-            X.....XA.A
-            S.S.S.S.SS
-            .A.A.A.A.A
-            ..M.M.M.MM
-            .X.X.XMASX",
-            "18",
+            ".M.S......
+            ..A..MSMS.
+            .M.S.MAA..
+            ..A.ASMSM.
+            .M.S.M....
+            ..........
+            S.S.S.S.S.
+            .A.A.A.A..
+            M.M.M.M.M.
+            ..........",
+            "9",
         );
         test_ignore_whitespaces(
             "MMMSXXMASM
@@ -152,27 +120,7 @@ mod tests {
             SAXAMASAAA
             MAMMMXMMMM
             MXMXAXMASX",
-            "18",
-        );
-    }
-
-    #[test]
-    fn small() {
-        test_ignore_whitespaces(
-            "..X...
-            .SAMX.
-            .A..A.
-            XMAS.S
-            .X....",
-            "4",
-        );
-    }
-
-    #[test]
-    fn line() {
-        test_ignore_whitespaces(
-            "XMASAMX.MM",
-            "2",
+            "9",
         );
     }
 }
