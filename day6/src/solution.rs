@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 //use regex::Regex;
 //use lazy_static::lazy_static;
 use std::collections::HashSet;
-//use std::collections::HashMap;
+use std::collections::HashMap;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -42,6 +42,15 @@ impl Direction {
             RIGHT => XY::new(1, 0),
             DOWN => XY::new(0, 1),
             LEFT => XY::new(-1, 0),
+        }
+    }
+    
+    const fn opposite(&self) -> Direction {
+        match self {
+            UP    => DOWN,
+            RIGHT => LEFT,
+            DOWN  => UP,
+            LEFT  => RIGHT,
         }
     }
 
@@ -120,7 +129,7 @@ impl Map {
     }
 
     fn is_within(&self, at: &XY) -> bool {
-        at.x < self.nodes.len() as i64 && at.y < self.nodes[0].len() as i64 &&
+        at.x < self.nodes[0].len() as i64 && at.y < self.nodes.len() as i64 &&
             at.x >= 0 && at.y >= 0
     }
 
@@ -128,7 +137,14 @@ impl Map {
         if !self.is_within(at) {
             panic!("Getting node out of bounds: {:?}", at);
         }
-        &self.nodes[at.y as usize][at.x as usize ]
+        &self.nodes[at.y as usize][at.x as usize]
+    }
+
+    fn mut_node_at(&mut self, at: &XY) -> &mut Node {
+        if !self.is_within(at) {
+            panic!("Getting node out of bounds: {:?}", at);
+        }
+        &mut self.nodes[at.y as usize][at.x as usize]
     }
 
     fn next_step(&self, pos: &XY, dir: &Direction) -> (XY, Direction) {
@@ -142,28 +158,82 @@ impl Map {
         }
     }
 
-    fn walk(&self) -> i64 {
-        let mut next_pos = self.start.clone();
-        let mut curr_dir = UP;
-        let mut walk_len = 0;
-        let mut visited = HashSet::new();
+    fn simple_step(&self, pos: &XY, dir: &Direction) -> XY {
+        pos.add(&dir.as_direction())
+    }
 
-        while self.is_within(&next_pos) {
-            if visited.insert(next_pos) {
-                walk_len += 1;
+    fn is_block(&self, pos: &XY) -> bool {
+        self.is_within(pos) && self.node_at(pos).typ == Type::Block
+    }
+
+    //fn fill_the_line_of_visitation(
+    //    &self, visited: &mut HashMap<XY, HashSet<Direction>>, pos: &XY, dir: &Direction) {
+    //    let opp = dir.opposite();
+    //    let block_check = opp.turn_right();
+    //    let mut curr_pos = self.simple_step(pos, &opp);
+    //    while self.is_within(&curr_pos) && self.node_at(&curr_pos).typ != Type::Block {
+    //        let vi_dirs = visited.entry(curr_pos).or_insert(HashSet::new());
+    //        if vi_dirs.contains(dir) {
+    //            break;
+    //        }
+    //        dprintln!("visited add: {:?}", (curr_pos, dir));
+    //        vi_dirs.insert(*dir);
+    //        let maybe_block = self.simple_step(&curr_pos, &block_check);
+    //        if self.is_block(&maybe_block) {
+    //            dprintln!("{:?} is block", maybe_block);
+    //            self.fill_the_line_of_visitation(visited, &curr_pos, &block_check);
+    //        }
+    //        curr_pos = self.simple_step(&curr_pos, &opp);
+    //    }
+    //}
+    
+    fn is_cycle(&self) -> bool {
+        let mut curr_pos = self.start.clone();
+        let mut curr_dir = UP;
+        let mut visited = HashMap::<XY, HashSet<Direction>>::new();
+
+        while self.is_within(&curr_pos) {
+            if let Some(dirs) = visited.get(&curr_pos) {
+                if dirs.contains(&curr_dir) { return true; }
             }
-            (next_pos, curr_dir) = self.next_step(&next_pos, &curr_dir);
+            visited.entry(curr_pos).or_insert(HashSet::new()).insert(curr_dir);
+            let (next_pos, next_dir) = self.next_step(&curr_pos, &curr_dir);
+            curr_pos = next_pos;
+            curr_dir = next_dir;
+        }
+        false
+    }
+
+    fn walk_searching(&mut self) -> i64 {
+        let mut curr_pos = self.start.clone();
+        let mut curr_dir = UP;
+        let mut new_obstacles = HashSet::new();
+
+        while self.is_within(&curr_pos) {
+            let potential_obstacle = self.simple_step(&curr_pos, &curr_dir);
+            if self.is_within(&potential_obstacle)
+                && !self.is_block(&potential_obstacle) && potential_obstacle != self.start {
+                    self.mut_node_at(&potential_obstacle).typ = Type::Block;
+                    if self.is_cycle() {
+                        new_obstacles.insert(potential_obstacle);
+                    }
+                    self.mut_node_at(&potential_obstacle).typ = Type::Empty;
+            }
+            let (next_pos, next_dir) = self.next_step(&curr_pos, &curr_dir);
+            curr_pos = next_pos;
+            curr_dir = next_dir;
         }
 
-        walk_len
+        dprintln!("New obs: {:?}", new_obstacles);
+        new_obstacles.len() as i64
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Map::from_input(lines_it);
+    let mut solution = Map::from_input(lines_it);
 
-    writeln!(output, "{}", solution.walk()).unwrap();
+    writeln!(output, "{}", solution.walk_searching()).unwrap();
 }
 
 pub fn main() {
@@ -198,7 +268,71 @@ mod tests {
             ........#.
             #.........
             ......#...",
-            "41",
+            "6",
+        );
+    }
+
+    #[test]
+    fn not_on_start() {
+        test_ignore_whitespaces(
+            "##...
+             ....#
+             .....
+             ^....
+             .#.#.",
+            "0",
+        );
+    }
+
+    #[test]
+    fn along_path() {
+        test_ignore_whitespaces(
+            "##...
+             ....#
+             .....
+             .....
+             ^#.#.",
+            "0",
+        );
+        test_ignore_whitespaces(
+            "##...
+             ....#
+             ^....
+             .....
+             .#.#.",
+            "1",
+        );
+    }
+
+    #[test]
+    fn path_blocked() {
+        test_ignore_whitespaces(
+            "##...
+             ....#
+             ...#.
+             .....
+             ^#.#.",
+            "0",
+        );
+    }
+    
+    #[test]
+    fn simple() {
+        test_ignore_whitespaces(
+            ".#..
+             ...#
+             ....
+             ....
+             .^#.",
+            "1",
+        );
+        test_ignore_whitespaces(
+            ".#..
+             ...#
+             .^..
+             ....
+             ..#.",
+            "1",
         );
     }
 }
