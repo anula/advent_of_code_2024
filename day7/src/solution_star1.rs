@@ -18,15 +18,6 @@ macro_rules! dprintln {
 enum Op {
     Add,
     Mul,
-    Con,
-}
-
-fn max_tenth(x: i64) -> i64 {
-    let mut res: i64 = 1;
-    while x / res > 0 {
-        res *= 10;
-    }
-    res
 }
 
 impl Op {
@@ -34,7 +25,6 @@ impl Op {
         match &self {
             Op::Add => a + b,
             Op::Mul => a * b,
-            Op::Con => (a * max_tenth(b)) + b,
         }
     }
 }
@@ -57,7 +47,7 @@ impl Equ {
     }
 
     fn is_valid(&self) -> bool {
-        let all_ops = vec![Op::Add, Op::Mul, Op::Con];
+        let all_ops = vec![Op::Add, Op::Mul];
 
         let mut pos_results = HashSet::new();
         pos_results.insert(self.numbers[0]);
@@ -138,7 +128,7 @@ mod tests {
             192: 17 8 14
             21037: 9 7 18 13
             292: 11 6 16 20",
-            "11387",
+            "3749",
         );
     }
 }
