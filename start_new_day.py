@@ -45,7 +45,7 @@ def cargo_init(day_name: str, templates_dir: str):
   shutil.copyfile(solution_template_path, solution_path)
 
   deps_path = os.path.join(templates_dir, DEPS_FILE)
-  cargo_toml_path = os.path.join(src_path, CARGO_TOML_FILE)
+  cargo_toml_path = os.path.join(day_name, CARGO_TOML_FILE)
 
   with open(deps_path, 'r') as df:
     deps_content = df.read()
