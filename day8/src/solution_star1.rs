@@ -150,31 +150,13 @@ impl Map {
     }
 
     fn antinodes_for(&self, a: &XY, b: &XY) -> Vec<XY> {
-        let (first, second) = if a.x < b.x
-             { (a, b) }
-            else if b.x < a.x { (b, a) }
-            else if a.y < b.y { (a, b) }
-            else { (b, a) };
-        let diff = second.sub(&first);
-        let start = {
-            let mut c = first.clone();
-            while self.is_within(&c) {
-                c = c.sub(&diff);
-            }
-            c.add(&diff)
-        };
-        dprintln!("For: {:?}:", (a, b));
-        dprintln!(" - order: {:?}:", (first, second));
-        dprintln!(" - diff: {:?}:", diff);
-        dprintln!(" - start: {:?}:", start);
-
+        let diff = b.sub(a);
         let mut antinodes = Vec::new();
-        let mut curr = start;
-        while self.is_within(&curr) {
-            antinodes.push(curr);
-            curr = curr.add(&diff);
+        for n in vec![b.add(&diff), a.sub(&diff)] {
+            if self.is_within(&n) {
+                antinodes.push(n);
+            }
         }
-        dprintln!(" - antis: {:?}:", antinodes);
         antinodes
     }
 
@@ -188,9 +170,6 @@ impl Map {
                 }
             }
         }
-        let mut sorted_antis = antinodes.iter().cloned().collect::<Vec<XY>>();
-        sorted_antis.sort_by_key(|a| (a.x, a.y));
-        dprintln!("antinodes: {:?}", sorted_antis);
         antinodes.len() as i64
     }
 }
@@ -236,24 +215,7 @@ mod tests {
             .........A..
             ............
             ............",
-            "34",
-        );
-    }
-
-    #[test]
-    fn simple() {
-        test_ignore_whitespaces(
-            "T.........
-            ...T......
-            .T........
-            ..........
-            ..........
-            ..........
-            ..........
-            ..........
-            ..........
-            ..........",
-            "9",
+            "14",
         );
     }
 }
