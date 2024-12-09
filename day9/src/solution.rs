@@ -1,5 +1,5 @@
 use std::io::{BufRead, BufReader, Write};
-use std::cmp::min;
+//use std::cmp::min;
 //use std::cmp::max;
 //use regex::Regex;
 //use lazy_static::lazy_static;
@@ -15,9 +15,15 @@ macro_rules! dprintln {
     };
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+enum Space {
+    File{ id: i64, size: i64 },
+    Empty{ size: i64 },
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct Solution {
-    disk_map: Vec<i64>,
+    disk_map: Vec<Space>,
     total_blocks: i64,
 }
 
@@ -35,10 +41,18 @@ impl Solution {
         let mut disk_map = Vec::new();
         let mut total_blocks = 0;
 
+        let mut file = true;
+        let mut file_id = 0;
         for ch in line.chars() {
             let len = ch.to_digit(10).unwrap() as i64;
-            disk_map.push(len);
+            if file {
+                disk_map.push(Space::File{ id: file_id, size: len});
+                file_id += 1;
+            } else {
+                disk_map.push(Space::Empty{ size: len });
+            }
             total_blocks += len;
+            file = !file;
         }
 
         Solution {
@@ -47,57 +61,71 @@ impl Solution {
         }
     }
 
-    fn solve(&self) -> i64 {
-        let mut i = 0 as i64;
-        let mut j = (self.disk_map.len() as i64) - 1;
-        if j % 2 == 1 {
-            j -= 1;
-        }
-
-        let mut checksum = 0;
+    fn checksum(disk_map: &[Space]) -> i64 {
         let mut blocks_before = 0;
-        let mut j_size_left = self.disk_map[j as usize];
-        while i < j {
-            dprintln!("i: {}", i);
-            let block_size = self.disk_map[i as usize];
-            let i_id = i / 2;
-            if i % 2 == 0 {
-                dprintln!(" -- is a file");
-                dprintln!(" -- sum_from_to({}, {})", blocks_before, blocks_before + block_size - 1);
-                let part_sum = sum_from_to(blocks_before, blocks_before + block_size - 1) * i_id;
-                checksum += part_sum;
-                dprintln!(" -- adding: {}", part_sum);
-                blocks_before += block_size;
-            } else {
-                dprintln!(" -- is not a file");
-                let mut size_filled = 0;
-                while size_filled < block_size && j > i{
-                    dprintln!(" :-- j: {}, j_size_left: {}", j, j_size_left);
-                    dprintln!(" :-- bef -- size_filled: {}", size_filled);
-                    let j_id = j/2;
-                    let filling = min(block_size - size_filled, j_size_left);
-                    let part_sum = sum_from_to(blocks_before, blocks_before + filling - 1) * j_id;
-                    checksum += part_sum;
-                    dprintln!(" :-- adding: {}", part_sum);
-                    blocks_before += filling;
-                    size_filled += filling;
-                    j_size_left -= filling;
-                    dprintln!(" :-- aft -- size_filled: {}", size_filled);
+        let mut checksum = 0;
+        for s in disk_map {
+            blocks_before += match s {
+                Space::File { id, size } => {
+                    checksum += sum_from_to(blocks_before, blocks_before + size - 1) * id;
+                    size
+                },
+                Space::Empty { size } => size,
+            }
+        }
+        checksum
+    }
 
-                    if j_size_left == 0 {
-                        j -= 2;
-                        if j > i {
-                            j_size_left = self.disk_map[j as usize];
+    fn solve(&self) -> i64 {
+        let mut last_file = (self.disk_map.len() as i64) - 1;
+        if last_file  % 2 == 1 {
+            last_file -= 1;
+        }
+        let last_file = last_file;
+        
+        let mut new_disk_map = self.disk_map.clone();
+
+        for j in (0..(last_file+1)).rev().step_by(2) {
+            let (j_id, len) = match self.disk_map[j as usize] {
+                Space::File { id, size } => (id, size),
+                _ => panic!("j should be on File!"),
+            };
+            for idx in 0..new_disk_map.len() {
+                if let Space::File { id, .. } = new_disk_map[idx] {
+                    if id == j_id { break; }
+                }
+                match new_disk_map[idx] {
+                    Space::File { .. } => continue,
+                    Space::Empty { size } => {
+                        if size >= len {
+                            let file = self.disk_map[j as usize].clone();
+                            let new_size = size - len;
+                            new_disk_map.remove(idx);
+                            if new_size > 0 {
+                                new_disk_map.insert(idx, Space::Empty{ size: new_size });
+                            }
+                            new_disk_map.insert(idx, file);
+                            for del_idx in (0..new_disk_map.len()).rev() {
+                                match new_disk_map[del_idx] {
+                                    Space::File { id, size } => {
+                                        if id == j_id {
+                                            new_disk_map.remove(del_idx);
+                                            new_disk_map.insert(del_idx, Space::Empty{ size });
+                                            break;
+                                        }
+                                    }
+                                    _ => {},
+                                }
+                            }
+                            break;
                         }
                     }
                 }
             }
-            i += 1;
         }
-        if j_size_left > 0 {
-            checksum += sum_from_to(blocks_before, blocks_before + j_size_left - 1) * j / 2;
-        }
-        checksum
+        dprintln!("new map: {:?}", new_disk_map);
+
+        Solution::checksum(&new_disk_map)
     }
 }
 
@@ -131,7 +159,7 @@ mod tests {
     fn sample() {
         test_ignore_whitespaces(
             "2333133121414131402",
-            "1928",
+            "2858",
         );
     }
 
@@ -139,14 +167,13 @@ mod tests {
     fn simple() {
         test_ignore_whitespaces(
             "12345",
-            "60",
+            "132",
         );
     }
 
     #[test]
-    fn summing() {
-        assert_eq!(sum_from_to(1, 2), 3);
-        assert_eq!(sum_from_to(3, 5), 12);
-        assert_eq!(sum_from_to(6, 8), 21);
+    fn checksum() {
+        let sol = Solution::from_input(vec!["12345".to_string()].into_iter());
+        assert_eq!(Solution::checksum(&sol.disk_map), 132);
     }
 }
