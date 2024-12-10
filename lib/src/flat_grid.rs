@@ -18,6 +18,7 @@ impl XY {
     ];
 
     const fn new(x: i64, y: i64) -> XY { XY {x, y} }
+    const fn unew(x: usize, y: usize) -> XY { XY {x: x as i64, y: y as i64} }
 
     const fn add(&self, other: &XY) -> XY { XY { x: self.x + other.x, y: self.y + other.y } }
     const fn sub(&self, other: &XY) -> XY { XY { x: self.x - other.x, y: self.y - other.y } }
