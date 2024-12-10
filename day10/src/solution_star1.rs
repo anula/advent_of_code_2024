@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Write};
 //use std::cmp::{max, min};
 //use regex::Regex;
 //use lazy_static::lazy_static;
-//use std::collections::HashSet;
+use std::collections::HashSet;
 //use std::collections::HashMap;
 
 macro_rules! dprintln {
@@ -159,24 +159,23 @@ impl Grid {
         neighbours
     }
 
-    fn dfs(&self, v: &XY) -> i64 {
+    fn dfs(&self, v: &XY, tops: &mut HashSet<XY>) {
         if self.node_at(v) == 9 {
-            return 1;
+            tops.insert(*v);
         }
 
-        let mut score = 0;
         for n in &self.neighbours(v) {
-            score += self.dfs(n);
+            self.dfs(n, tops);
         }
-        score
     }
 
     fn solve(&self) -> i64 {
         let mut scores = 0;
         for head in &self.trailheads {
-            let score = self.dfs(head);
-            scores += score;
-            dprintln!("For: {:?}, score: {}", head, score);
+            let mut tops = HashSet::new();
+            self.dfs(head, &mut tops);
+            scores += tops.len() as i64;
+            dprintln!("For: {:?}, score: {}, tops: {:?}", head, tops.len(), tops);
         }
         scores
     }
@@ -219,7 +218,7 @@ mod tests {
             32019012
             01329801
             10456732",
-            "81",
+            "36",
         );
     }
 
@@ -248,47 +247,6 @@ mod tests {
             ...9..2
             .....01",
             "3",
-        );
-    }
-
-    #[test]
-    fn sample_rating() {
-        test_ignore_whitespaces(
-            ".....0.
-            ..4321.
-            ..5..2.
-            ..6543.
-            ..7..4.
-            ..8765.
-            ..9....",
-            "3",
-        );
-    }
-
-    #[test]
-    fn sample_rating13() {
-        test_ignore_whitespaces(
-            "..90..9
-            ...1.98
-            ...2..7
-            6543456
-            765.987
-            876....
-            987....",
-            "13",
-        );
-    }
-
-    #[test]
-    fn sample_rating227() {
-        test_ignore_whitespaces(
-            "012345
-            123456
-            234567
-            345678
-            4.6789
-            56789.",
-            "227",
         );
     }
 }
