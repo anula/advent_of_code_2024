@@ -96,7 +96,7 @@ struct Grid {
     nodes: Vec<Vec<char>>,
 }
 
-fn inter_diff(a: &[(usize, usize)], b: &[(usize, usize)]) -> Vec<(usize, usize)>{
+fn inter_diff(a: &[(usize, usize)], b: &[(usize, usize)]) -> i64 {
     let mut b_set = HashSet::new();
     for int_b in b {
         for i_b in int_b.0..int_b.1 {
@@ -104,24 +104,11 @@ fn inter_diff(a: &[(usize, usize)], b: &[(usize, usize)]) -> Vec<(usize, usize)>
         }
     }
 
-    let mut res = Vec::new();
-    let mut curr_int = (0, 0);
+    let mut res = 0;
     for int_a in a {
         for i_a in int_a.0..int_a.1 {
-            if !b_set.contains(&i_a) {
-                if i_a == curr_int.1 {
-                    curr_int.1 += 1;
-                } else {
-                    if curr_int.1 != 0 {
-                        res.push(curr_int);
-                    }
-                    curr_int = (i_a, i_a+1);
-                }
-            }
+            if !b_set.contains(&i_a) { res += 1 }
         }
-    }
-    if curr_int.1 != 0 {
-        res.push(curr_int);
     }
     res
 }
@@ -185,6 +172,7 @@ impl Grid {
                 let mut queue = VecDeque::new();
                 queue.push_back(xy);
                 while let Some(field) = queue.pop_front() {
+                    dprintln!("field: {:?}", field);
                     let new_cha = self.node_at(&field);
                     if new_cha != cha { continue }
                     if plots[field.y as usize][field.x as usize] != -1 {continue;}
@@ -228,59 +216,23 @@ impl Grid {
 
             for (plot_no, intervals) in &new_open_plots {
                 if let Some(ex_intervals) = open_plots.get(plot_no) {
+                    let diff = inter_diff(&intervals, &ex_intervals);
                     let pl_info = &mut plots_info[*plot_no as usize];
                     pl_info.0 += inter_size(intervals);
-
-                    dprintln!("y: {:?}, plot_no: {:?}", y, plot_no);
-                    dprintln!("intervals: {:?}", intervals);
-                    dprintln!("ex_intervals: {:?}", ex_intervals);
-
-                    for int in intervals {
-                        dprintln!("checking int: {:?}", int);
-                        // new left start
-                        if y == 0 || !(plots[y - 1][int.0] == *plot_no && (int.0 == 0 || plots[y - 1][int.0 - 1] != *plot_no)) {
-                            dprintln!("new start at: {:?}", int.0);
-                            pl_info.1 += 1;
-                        }
-                        // new right end
-                        if y == 0 || !(plots[y - 1][int.1 - 1] == *plot_no && (int.1 == plots[y].len() || plots[y - 1][int.1] != *plot_no)) {
-                            dprintln!("new end at: {:?}", int.1);
-                            pl_info.1 += 1;
-                        }
-                    }
-
-                    // flat starts
-                    let flat_starts = inter_diff(intervals, ex_intervals).len() as i64;
-                    dprintln!("flat_starts: {:?}", flat_starts);
-                    pl_info.1 += flat_starts;
-                    // flat ends
-                    let flat_ends = inter_diff(ex_intervals, intervals).len() as i64;
-                    dprintln!("flat_ends: {:?}", flat_ends);
-                    pl_info.1 += flat_ends;
-
+                    pl_info.1 += 2 * intervals.len() as i64 + 2 * diff;
                 } else {
                     let mut size: i64 = 0;
-                    let mut walls: i64 = 0;
+                    let mut peri: i64 = 0;
                     for inter in intervals {
                         let i_size = (inter.1 - inter.0) as i64;
                         size += i_size;
-                        walls += 3;
+                        peri += i_size * 2 + 2;
                     }
-                    plots_info[*plot_no as usize] = (size, walls);
+                    plots_info[*plot_no as usize] = (size, peri);
                 }
-                open_plots.remove(plot_no);
-            }
-            for (plot_no, intervals) in &open_plots {
-                plots_info[*plot_no as usize].1 += intervals.len() as i64;
             }
             open_plots = new_open_plots;
             dprintln!("open_plots at the end: {:?}", open_plots);
-        }
-        // ending flats
-        for (plot_no, intervals) in &open_plots {
-            let pl_info = &mut plots_info[*plot_no as usize];
-
-            pl_info.1 += intervals.len() as i64;
         }
         dprintln!("plots: {:?}", plots);
         dprintln!("plots_info: {:?}", plots_info);
@@ -321,7 +273,7 @@ mod tests {
             BBCD
             BBCC
             EEEC",
-            "80",
+            "140",
         );
     }
 
@@ -333,7 +285,7 @@ mod tests {
             OOOOO
             OXOXO
             OOOOO",
-            "436",
+            "772",
         );
     }
 
@@ -350,40 +302,15 @@ mod tests {
             MIIIIIJJEE
             MIIISIJEEE
             MMMISSJEEE",
-            "1206",
-        );
-    }
-
-    #[test]
-    fn sample4() {
-        test_ignore_whitespaces(
-            "EEEEE
-            EXXXX
-            EEEEE
-            EXXXX
-            EEEEE",
-            "236",
-        );
-    }
-
-    #[test]
-    fn sample5() {
-        test_ignore_whitespaces(
-            "AAAAAA
-            AAABBA
-            AAABBA
-            ABBAAA
-            ABBAAA
-            AAAAAA",
-            "368",
+            "1930",
         );
     }
 
     #[test]
     fn inter_diff_test() {
         let a = vec![(0, 5), (8, 10)];
-        assert_eq!(inter_diff(&a, &vec![(6, 8)]), vec![(0, 5), (8, 10)]);
-        assert_eq!(inter_diff(&a, &vec![(3, 8)]), vec![(0, 3), (8, 10)]);
-        assert_eq!(inter_diff(&vec![(0, 10), (11, 16)], &vec![(3, 8)]), vec![(0, 3), (8, 10), (11, 16)]);
+        assert_eq!(inter_diff(&a, &vec![(6, 8)]), 7);
+        assert_eq!(inter_diff(&a, &vec![(3, 8)]), 5);
+        assert_eq!(inter_diff(&vec![(0, 10), (11, 16)], &vec![(3, 8)]), 10);
     }
 }
