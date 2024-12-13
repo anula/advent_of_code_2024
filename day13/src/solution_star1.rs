@@ -39,6 +39,55 @@ impl XY {
     const fn ux(&self) -> usize { self.x as usize }
     const fn uy(&self) -> usize { self.y as usize }
 
+    const fn step(&self, dir: &Direction) -> XY { self.add(&dir.as_coords()) }
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+enum Direction {
+    UP,
+    RIGHT,
+    DOWN,
+    LEFT,
+}
+use Direction::{UP, RIGHT, DOWN, LEFT};
+
+#[allow(dead_code)]
+impl Direction {
+    const ALL: [Direction; 4] = [
+        UP,
+        RIGHT,
+        DOWN,
+        LEFT,
+    ];
+
+    const fn as_coords(&self) -> XY {
+        match self {
+            UP => XY::new(0, -1),
+            RIGHT => XY::new(1, 0),
+            DOWN => XY::new(0, 1),
+            LEFT => XY::new(-1, 0),
+        }
+    }
+
+    const fn reverse(&self) -> Self {
+        match self {
+            UP => DOWN,
+            RIGHT => LEFT,
+            DOWN => UP,
+            LEFT => RIGHT,
+        }
+    }
+
+    const fn from_to(from: &XY, to: &XY) -> Self {
+        let diff = to.sub(from);
+        match diff {
+            XY { x, y } if x < 0 && y == 0 => LEFT,
+            XY { x, y } if x > 0 && y == 0 => RIGHT,
+            XY { x, y } if x == 0 && y > 0 => DOWN,
+            XY { x, y } if x == 0 && y < 0 => UP,
+            _ => panic!("Diagonal!"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -50,8 +99,6 @@ struct Solution {
 impl Solution {
     const A_COST: i64 = 3;
     const B_COST: i64 = 1;
-    const ADDITIVE: i64 = 10000000000000;
-    //const ADDITIVE: i64 = 0;
 
     fn from_input<I>(mut lines: I) -> Self
         where I: Iterator<Item = String>
@@ -80,6 +127,7 @@ impl Solution {
 
             let l2 = lines.next().unwrap();
             let sec_line = l2.trim();
+            dprintln!("sec_line: {:?}", sec_line);
             let sec_caps = BUT_RE.captures(sec_line).unwrap();
             let button_b = XY::new(
                 sec_caps[1].parse::<i64>().unwrap(),
@@ -90,8 +138,8 @@ impl Solution {
             let tri_line = l3.trim();
             let tri_caps = PRI_RE.captures(tri_line).unwrap();
             let prize = XY::new(
-                Self::ADDITIVE + tri_caps[1].parse::<i64>().unwrap(),
-                Self::ADDITIVE + tri_caps[2].parse::<i64>().unwrap()
+                tri_caps[1].parse::<i64>().unwrap(),
+                tri_caps[2].parse::<i64>().unwrap()
             );
 
             buttons.push((button_a, button_b));
@@ -107,30 +155,30 @@ impl Solution {
     }
 
     fn cheapest_presses(&self, idx: usize) -> Option<i64> {
+        let max_presses = 100;
+
         let button_a = self.buttons[idx].0;
         let button_b = self.buttons[idx].1;
         let prize = self.prizes[idx];
-        dprintln!("Buttons: {:?}, prize: {:?}", (button_a, button_b), prize);
+        let mut res = None;
+        for a_press in 0..max_presses {
+            let left_x = prize.x - button_a.x * a_press;
+            if !(left_x > 0 && left_x % button_b.x == 0) {
+                continue;
+            }
+            let b_press = left_x / button_b.x;
+            if a_press * button_a.y + b_press * button_b.y != prize.y {
+                continue;
+            }
 
-        let det = button_a.x * button_b.y - button_a.y * button_b.x;
-        dprintln!("det: {}", det);
-        if det == 0 { return None; }
-
-        let det_n = prize.x * button_b.y - prize.y * button_b.x;
-        let det_m = button_a.x * prize.y - button_a.y * prize.x;
-        dprintln!("det_n: {}", det_n);
-        dprintln!("det_m: {}", det_m);
-
-        if !(det_n % det == 0 && det_m % det == 0) { return None; }
-
-        let a_press = det_n / det;
-        let b_press = det_m / det;
-        dprintln!("a_press: {}", a_press);
-        dprintln!("b_press: {}", b_press);
-
-        let cost = a_press * Self::A_COST + b_press * Self::B_COST;
-        dprintln!("cost: {}", cost);
-        Some(cost)
+            let cost = a_press * Self::A_COST + b_press * Self::B_COST;
+            res = if let Some(r) = res {
+                Some(min(r, cost))
+            } else {
+                Some(cost)
+            };
+        }
+        res
     }
 
     fn solve(&self) -> i64 {
