@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 use regex::Regex;
 use lazy_static::lazy_static;
 //use std::collections::HashSet;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -59,7 +59,7 @@ impl Robot {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 struct Solution {
     wide: i64,
     tall: i64,
@@ -86,112 +86,55 @@ impl Solution {
         }
     }
 
-    fn print(&self) -> (String, bool) {
+    fn solve(&self, seconds: i64) -> i64 {
         let mid_width = self.wide/2;
         let mid_height = self.tall/2;
 
-        let mut res = String::new();
-        let mut robot_locations = HashMap::<XY, Vec<usize>>::new();
-        for (i, robot) in self.robots.iter().enumerate() {
-            robot_locations.entry(robot.pos).or_insert(vec![]).push(i);
-        }
         let mut quadrant_tl = 0;
         let mut quadrant_tr = 0;
         let mut quadrant_bl = 0;
         let mut quadrant_br = 0;
-        let mut interesting = true;
-        //println!("hashmap: {:?}", robot_locations);
-        for y in 0..self.tall {
-            for x in 0..self.wide {
-                let curr = XY::new(x, y);
-                let cha = &robot_locations.get(&curr).map_or('.'.to_string(), |x| x.len().to_string());
-                if y < 35 && x < 7 {
-                    if cha != "." { interesting = false; }
-                }
-                res.push_str(cha);
-                let num = robot_locations.get(&curr).map_or(0, |x| x.len() as i64);
-                if curr.x < mid_width && curr.y < mid_height {
-                    quadrant_tl += num;
-                }
-                if curr.x < mid_width && curr.y > mid_height {
-                    quadrant_bl += num;
-                }
-                if curr.x > mid_width && curr.y < mid_height {
-                    quadrant_tr += num;
-                }
-                if curr.x > mid_width && curr.y > mid_height {
-                    quadrant_br += num;
-                }
-            }
-            res.push_str("\n");
-        }
-        (res, quadrant_bl > quadrant_tl + 20 && quadrant_br > quadrant_tr + 20)
-    }
-
-    fn advance(&self, seconds: i64) -> Self {
-        let mut new_robots = Vec::new();
 
         for robot in &self.robots {
             let mut new_pos = robot.pos.add(&robot.vel.mul(&XY::new(seconds, seconds)));
+            dprintln!("robot: {:?}", robot);
+            dprintln!(" -- new_pos: {:?}", new_pos);
             new_pos.x %= self.wide;
             if new_pos.x < 0 { 
                 new_pos.x += self.wide;
             }
             new_pos.y %= self.tall;
             if new_pos.y < 0 { new_pos.y += self.tall }
-            new_robots.push(
-                Robot {
-                    pos: new_pos,
-                    vel: robot.vel,
-                }
-            );
+            dprintln!(" -- new_pos mod: {:?}", new_pos);
+            if new_pos.x < mid_width && new_pos.y < mid_height {
+                dprintln!(" -- TL");
+                quadrant_tl += 1;
+            }
+            if new_pos.x < mid_width && new_pos.y > mid_height {
+                dprintln!(" -- BL");
+                quadrant_bl += 1;
+            }
+            if new_pos.x > mid_width && new_pos.y < mid_height {
+                dprintln!(" -- TR");
+                quadrant_tr += 1;
+            }
+            if new_pos.x > mid_width && new_pos.y > mid_height {
+                dprintln!(" -- BR");
+                quadrant_br += 1;
+            }
         }
-        Solution {
-            wide: self.wide,
-            tall: self.tall,
-            robots: new_robots,
-        }
+        dprintln!("quadrants: {:?}", (quadrant_tl, quadrant_tr));
+        dprintln!("quadrants: {:?}", (quadrant_bl, quadrant_br));
+        quadrant_tl * quadrant_tr * quadrant_bl * quadrant_br
     }
-
 }
 
-fn solve<R: BufRead, W: Write>(input: R, mut _output: W) {
+fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Solution::from_input(lines_it);
+    let mut solution = Solution::from_input(lines_it);
     dprintln!("solution: {:?}", solution);
 
-    // The whole thing repeats after this many
-    let total_offset = 733;
-    let total_cycle = 10403;
-
-    // for the middle heavy thing
-    let offset = 35;
-    let cycle = 101;
-
-    let mut prev = String::new(); 
-    let mut prev_sol = solution.clone();
-    for i in 0..total_cycle {
-        let secs = offset + i*cycle;
-        if secs > total_cycle + total_offset { break }
-        //let secs = i;
-        let sol = solution.advance(secs);
-        let (picture, interesting) = sol.print();
-        if picture == prev {
-            println!("same picture as prev");
-        }
-        if prev_sol == sol {
-            println!("same sol as prev");
-        }
-        if interesting || true {
-            println!("Seconds {}:", secs);
-            println!("{}", picture);
-            println!("\n\n");
-        }
-        prev = picture;
-        prev_sol = sol;
-    }
-
-    //writeln!(output, "{}", solution.solve(100)).unwrap();
+    writeln!(output, "{}", solution.solve(100)).unwrap();
 }
 
 pub fn main() {
