@@ -99,10 +99,12 @@ impl Direction {
         }
     }
 }
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 enum Node {
     Wall,
-    Boks,
+    BoksL,
+    BoksR,
     Robot,
     Empty,
 }
@@ -113,7 +115,7 @@ impl Node {
         match c {
             '.' => Node::Empty,
             '#' => Node::Wall,
-            'O' => Node::Boks,
+            'O' => Node::BoksL,
             '@' => Node::Robot,
             _ => { panic!("wrong input!"); },
         }
@@ -142,9 +144,22 @@ impl Grid {
             nodes.push(Vec::new());
 
             for (x, c) in line.char_indices() {
-                nodes[y].push(Node::from_char(c));
-                if nodes[y][x] == Node::Robot {
-                    robot_pos = XY::unew(x, y);
+                let n = Node::from_char(c);
+                match n {
+                    Node::Wall | Node::Empty => {
+                        nodes[y].push(n);
+                        nodes[y].push(n);
+                    },
+                    Node::BoksL => {
+                        nodes[y].push(Node::BoksL);
+                        nodes[y].push(Node::BoksR);
+                    },
+                    Node::BoksR => panic!("should not happen"),
+                    Node::Robot => {
+                        nodes[y].push(n);
+                        robot_pos = XY::unew(x * 2, y);
+                        nodes[y].push(Node::Empty);
+                    }
                 }
             }
         }
@@ -186,6 +201,65 @@ impl Grid {
         &mut self.nodes[at.y as usize][at.x as usize]
     }
 
+    fn maybe_move_boxes(&mut self, box_pos: &XY, dir: &Direction, dry_run: bool) -> bool {
+        let (left_box, right_box) = match self.node_at(box_pos) {
+            Node::BoksL => 
+                (box_pos.clone(), box_pos.step(&RIGHT)),
+            Node::BoksR =>
+                (box_pos.step(&LEFT), box_pos.clone()),
+            Node::Wall => {
+                return false;
+            },
+            Node::Empty => {
+                return true;
+            },
+            Node::Robot => panic!("robot moving robot?"),
+        };
+        match dir {
+            UP | DOWN => {
+                let left_new = left_box.step(dir);
+                let right_new = right_box.step(dir);
+                if !self.maybe_move_boxes(&left_new, dir, true) { return false; }
+                if self.node_at(&right_new) != &Node::BoksR {
+                    if !self.maybe_move_boxes(&right_new, dir, dry_run) { return false; }
+                }
+                self.maybe_move_boxes(&left_new, dir, dry_run);
+
+                if !dry_run {
+                    *self.mut_node_at(&left_new) = Node::BoksL;
+                    *self.mut_node_at(&right_new) = Node::BoksR;
+                    *self.mut_node_at(&left_box) = Node::Empty;
+                    *self.mut_node_at(&right_box) = Node::Empty;
+                }
+                return true;
+            },
+            di @ (LEFT | RIGHT) => {
+                let new_pos = match di {
+                    LEFT => left_box.step(&LEFT),
+                    RIGHT => right_box.step(&RIGHT),
+                    _ => panic!("Should really not happen"),
+                };
+                if !self.maybe_move_boxes(&new_pos, dir, dry_run) { return false; }
+                if !dry_run {
+                    match di {
+                        LEFT => {
+                            *self.mut_node_at(&new_pos) = Node::BoksL;
+                            *self.mut_node_at(&left_box) = Node::BoksR;
+                            *self.mut_node_at(&right_box) = Node::Empty;
+                        },
+                        RIGHT => {
+                            *self.mut_node_at(&new_pos) = Node::BoksR;
+                            *self.mut_node_at(&right_box) = Node::BoksL;
+                            *self.mut_node_at(&left_box) = Node::Empty;
+                        },
+                        _ => panic!("Should really not happen"),
+                    };
+                }
+                return true;
+            },
+        }
+    }
+
     fn single_move(&mut self, dir: &Direction) {
         let robot_pos = self.robot_pos.clone();
         let maybe_new_pos = self.robot_pos.step(dir);
@@ -201,29 +275,40 @@ impl Grid {
             return;
         }
         // So it has to be Boks.
-        let mut box_line_end = maybe_new_pos.clone();
-        while *self.node_at(&box_line_end) == Node::Boks {
-            box_line_end = box_line_end.step(dir);
-        }
 
-        if *self.node_at(&box_line_end) == Node::Wall {
-            return;
+        if self.maybe_move_boxes(&maybe_new_pos, dir, false) {
+            let new_pos_node = self.mut_node_at(&maybe_new_pos);
+            *new_pos_node = Node::Robot;
+            let old_pos_node = self.mut_node_at(&robot_pos);
+            *old_pos_node = Node::Empty;
+            self.robot_pos = maybe_new_pos;
         }
-        let new_pos_node = self.mut_node_at(&maybe_new_pos);
-        *new_pos_node = Node::Robot;
-        let old_pos_node = self.mut_node_at(&robot_pos);
-        *old_pos_node = Node::Empty;
-        let new_box_pos = self.mut_node_at(&box_line_end);
-        *new_box_pos = Node::Boks;
-
-        self.robot_pos = maybe_new_pos;
     }
 
     fn follow_moves(&mut self) {
         for i in 0..self.moves.len() {
             let dir = self.moves[i].clone();
             self.single_move(&dir);
+            dprintln!("Dir: {:?}", dir);
+            dprintln!("{}", self.pretty_string());
         }
+    }
+
+    fn pretty_string(&self) -> String {
+        let mut res = String::new();
+        for y in 0..self.nodes.len() {
+            for x in 0..self.nodes[0].len() {
+                res += match self.nodes[y][x] {
+                    Node::Empty => ".",
+                    Node::Wall => "#",
+                    Node::Robot => "@",
+                    Node::BoksL => "[",
+                    Node::BoksR => "]",
+                };
+            }
+            res += "\n";
+        }
+        res
     }
 
     fn gps_sum(&self) -> i64 {
@@ -231,21 +316,44 @@ impl Grid {
         for y in 0..self.nodes.len() {
             for x in 0..self.nodes[0].len() {
                 let pos = XY::unew(x, y);
-                if *self.node_at(&pos) == Node::Boks {
+                if &Node::BoksL == self.node_at(&pos) {
                     res += 100 * pos.y + pos.x;
                 }
             }
         }
         res
     }
+
+    fn count_objects(&self) -> (i64, i64, i64) {
+        let mut walls = 0;
+        let mut empty_spaces = 0;
+        let mut boxes = 0;
+        for y in 0..self.nodes.len() {
+            for x in 0..self.nodes[0].len() {
+                let pos = XY::unew(x, y);
+                match self.node_at(&pos) {
+                    Node::Wall => walls += 1,
+                    Node::Empty => empty_spaces += 1,
+                    Node::BoksL | Node::BoksR => boxes += 1,
+                    Node::Robot => {},
+                }
+            }
+        }
+        (walls, empty_spaces, boxes)
+    }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
     let mut grid = Grid::from_input(lines_it);
-    dprintln!("grid: {:?}", grid);
+    dprintln!("grid: \n{}", grid.pretty_string());
+    let counts_start = grid.count_objects();
     grid.follow_moves();
-    dprintln!("grid after: {:?}", grid);
+    dprintln!("grid after: \n{}", grid.pretty_string());
+    let counts_end = grid.count_objects();
+    if counts_start != counts_end {
+        panic!("Diff!: {:?}, {:?}", counts_start, counts_end);
+    }
 
     writeln!(output, "{}", grid.gps_sum()).unwrap();
 }
@@ -293,7 +401,23 @@ mod tests {
             <><^^>^^^<><vvvvv^v<v<<>^v<v>v<<^><<><<><<<^^<<<^<<>><<><^^^>^^<>^>v<>
             ^^>vv<^v^v<vv>^<><v<^v>^^^>>>^^vvv^>vvv<>>>^<^>>>>>^<<^v>^vvv<>^<><<v>
             v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^",
-            "10092",
+            "9021",
+        );
+    }
+
+    #[test]
+    fn sample_small() {
+        test_ignore_whitespaces(
+            "#######
+            #...#.#
+            #.....#
+            #..OO@#
+            #..O..#
+            #.....#
+            #######
+
+            <vv<<^^<<^^",
+            "618",
         );
     }
 
@@ -310,7 +434,162 @@ mod tests {
             ########
 
             <^^>>>vv<v>>v<<",
-            "2028",
+            "1751",
+        );
+    }
+
+    #[test]
+    fn sample_early_move() {
+        test_ignore_whitespaces(
+            "########
+            #......#
+            ##.....#
+            #..OO@.#
+            #..#...#
+            #......#
+            #......#
+            ########
+
+            <^<<<v",
+            "612",
+        );
+    }
+    
+    #[test]
+    fn bad() {
+        test_ignore_whitespaces(
+            "#####
+             #...#
+             #@O.#
+             #.O##
+             #.O.#
+             #.O.#
+             #...#
+             #####
+
+            >>^>v",
+            "1417",
+        );
+    }
+
+    #[test]
+    fn random_inputs() {
+        test_ignore_whitespaces(
+            "#####
+             #.#.#
+             #OO.#
+             #.O@#
+             #...#
+             #####
+
+            <^v<^",
+            "709",
+        );
+        test_ignore_whitespaces(
+            "#####
+             #.#.#
+             #O..#
+             #.O@#
+             #.O.#
+             #...#
+             #####
+
+            <>vvv<^",
+            "609",
+        );
+        test_ignore_whitespaces(
+            "#####
+             #...#
+             #.O@#
+             ##O.#
+             #...#
+             #...#
+             #####
+
+            <>vv<<^",
+            "307",
+        );
+        test_ignore_whitespaces(
+            "#######
+            #.....#
+            #.O#..#
+            #..O@.#
+            #.....#
+            #######
+
+            <v<<^",
+            "509",
+        );
+        test_ignore_whitespaces(
+            "#######
+            #.....#
+            #.#O..#
+            #..O@.#
+            #.....#
+            #######
+
+            <v<^",
+            "511",
+        );
+        test_ignore_whitespaces(
+            "######
+            #....#
+            #.O..#
+            #.OO@#
+            #.O..#
+            #....#
+            ######
+
+            <vv<<^",
+            "816",
+        );
+        test_ignore_whitespaces(
+            "#######
+            #.....#
+            #.O.O@#
+            #..O..#
+            #..O..#
+            #.....#
+            #######
+
+            <v<<>vv<^^",
+            "822",
+        );
+        test_ignore_whitespaces(
+            "########
+            #......#
+            #OO....#
+            #.O....#
+            #.O....#
+            ##O....#
+            #O..O@.#
+            #......#
+            ########
+
+            <
+            ^
+            ^
+            <
+            <
+            >
+            ^^
+            ^<v",
+            "2827",
+        );
+    }
+
+    #[test]
+    fn scoring() {
+        test_ignore_whitespaces(
+            "#####
+             #O..#
+             #...#
+             #..@#
+             #...#
+             #####
+
+            ^",
+            "102",
         );
     }
 }
