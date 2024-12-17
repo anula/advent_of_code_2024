@@ -4,9 +4,8 @@ use std::collections::BinaryHeap;
 //use std::cmp::{max, min};
 //use regex::Regex;
 //use lazy_static::lazy_static;
-use std::collections::HashSet;
+//use std::collections::HashSet;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -240,30 +239,9 @@ impl Grid {
         neighs
     }
 
-    fn pre_neighbours(&self, pos: &XY, dir: &Direction, dist: i64, dists: &HashMap<(XY, Direction), i64>) -> Vec<(XY, Direction)> {
-        let mut neighs = Vec::new();
-        let cheap = pos.step(&dir.reverse());
-        if let Some(new_dist) = dists.get(&(cheap, *dir)) {
-            if *new_dist == dist - Self::FORWARD_COST {
-                neighs.push((cheap, *dir));
-            }
-        }
-
-        for turn_dir in vec![dir.turn_left(), dir.turn_right()] {
-            if let Some(new_dist) = dists.get(&(*pos, turn_dir)) {
-                if *new_dist == dist - Self::TURN_COST {
-                    neighs.push((*pos, turn_dir));
-                }
-            }
-        }
-
-        neighs
-    }
-
     fn shortest_path(&self) -> i64 {
         let mut queue = BinaryHeap::new();
         let mut dists = HashMap::<(XY, Direction), i64>::new();
-        let mut last_dir = UP;
 
         dists.insert((self.start, Self::START_TURN), 0);
         queue.push(QueueEntry {
@@ -272,19 +250,19 @@ impl Grid {
             dist: 0,
         });
 
-        'shortest: while let Some(QueueEntry { pos, dir, dist }) = queue.pop() {
+        while let Some(QueueEntry { pos, dir, dist }) = queue.pop() {
             if let Some(ex_dist) = dists.get(&(pos, dir)) {
-                if *ex_dist < dist {
+                if *ex_dist > dist {
                     continue;
                 }
             }
             dists.insert((pos, dir), dist);
-            if pos == self.end {
-                last_dir = dir;
-                dprintln!("Found the end: {:?}", (pos, dir));
-                break 'shortest;
-            }
             for n in self.neighbours(&pos, &dir, dist) {
+                if n.pos == self.end {
+                    dprintln!("Distances: {:?}", dists);
+                    return n.dist;
+                }
+
                 let already = dists.get(&(n.pos, n.dir));
                 if already == None || *already.unwrap() > n.dist {
                     queue.push(n);
@@ -292,22 +270,7 @@ impl Grid {
 
             }
         }
-
-        let mut queue = VecDeque::new();
-
-        let mut path_nodes = HashSet::new();
-        queue.push_back((self.end, last_dir));
-
-        while let Some((pos, dir)) = queue.pop_front() {
-            path_nodes.insert(pos);
-            let dist = dists.get(&(pos, dir)).unwrap();
-            dprintln!("Dist: {}, for {:?}", dist, (pos, dir));
-            for n in self.pre_neighbours(&pos, &dir, *dist, &dists) {
-                queue.push_back(n);
-            }
-        }
-
-        path_nodes.len() as i64
+        panic!("Found no path at all!");
     }
 }
 
@@ -355,7 +318,7 @@ mod tests {
             #.###.#.#.#.#.#
             #S..#.....#...#
             ###############",
-            "45",
+            "7036",
         );
     }
 
@@ -379,20 +342,7 @@ mod tests {
             #.#.#.#########.#
             #S#.............#
             #################",
-            "64",
-        );
-    }
-
-    #[test]
-    fn new() {
-        test_ignore_whitespaces(
-            "##########
-             ####.#.#.#
-             ##...#.#.#
-             ##.#.#.#.#
-             #S.#....E#
-             ##########",
-            "12",
+            "11048",
         );
     }
 }
