@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
         {
-	    #[cfg(test)]
+            #[cfg(test)]
             println!($($x), *);
         }
     };
@@ -83,7 +83,7 @@ struct Program {
 
 
 impl Program {
-    fn exec(&self) -> String {
+    fn exec(&self) -> Vec<i64> {
         let mut out = Vec::new();
         let mut ins_ptr: usize = 0;
         let mut regs = self.initial_regs.clone();
@@ -145,7 +145,7 @@ impl Program {
             }
         }
 
-        out.iter().map(|o| o.to_string()).collect::<Vec<String>>().join(",")
+        out
     }
 }
 
@@ -181,14 +181,22 @@ impl Solution {
         }
     }
 
-    fn solve(&self) -> String {
-        self.program.exec()
+    fn solve(&mut self) -> i64 {
+        let mut a = 0;
+        loop {
+            self.program.initial_regs.a = a;
+            let result = self.program.exec();
+            if result == self.program.program {
+                return a;
+            }
+            a += 1;
+        }
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Solution::from_input(lines_it);
+    let mut solution = Solution::from_input(lines_it);
     dprintln!("solution: {:?}", solution);
 
     writeln!(output, "{}", solution.solve()).unwrap();
@@ -216,12 +224,12 @@ mod tests {
     #[test]
     fn sample() {
         test_ignore_whitespaces(
-            "Register A: 729
+            "Register A: 2024
             Register B: 0
             Register C: 0
 
-            Program: 0,1,5,4,3,0",
-            "4,6,3,5,6,3,5,2,1,0",
+            Program: 0,3,5,4,3,0",
+            "117440",
         );
     }
 }
