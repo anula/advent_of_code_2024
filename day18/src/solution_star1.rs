@@ -101,6 +101,7 @@ struct Grid {
     height: usize,
     width: usize,
     corruptions: Vec<XY>,
+    corruptions_num: usize,
 }
 
 #[allow(dead_code)]
@@ -112,6 +113,8 @@ impl Grid {
         let l_size = lines.next().unwrap();
         dprintln!("lsize: {:?}", l_size);
         let size = l_size.trim().parse::<usize>().unwrap();
+        let l_corrs = lines.next().unwrap();
+        let corruptions_num = l_corrs.trim().parse::<usize>().unwrap();
         for l in lines {
             let line = l.trim();
             let parts = line.split(",").map(|s| s.parse::<i64>().unwrap()).collect::<Vec<i64>>();
@@ -122,6 +125,7 @@ impl Grid {
             height: size + 1,
             width: size + 1,
             corruptions,
+            corruptions_num,
         }
     }
 
@@ -130,30 +134,30 @@ impl Grid {
             at.x >= 0 && at.y >= 0
     }
 
-    fn node_at(&self, at: &XY, corruptions_num: usize) -> Node {
+    fn node_at(&self, at: &XY) -> Node {
         if !self.is_within(at) {
             panic!("Getting node out of bounds: {:?}", at);
         }
-        if self.corruptions[0..corruptions_num].contains(at) {
+        if self.corruptions[0..self.corruptions_num].contains(at) {
             Node::Blocked
         } else {
             Node::Empty
         }
     }
 
-    fn neighbours(&self, pos: &XY, corruptions_num: usize) -> Vec<XY> {
+    fn neighbours(&self, pos: &XY) -> Vec<XY> {
         let mut neighs = Vec::new();
         for dir in Direction::ALL {
             let potential = pos.step(&dir);
             if !self.is_within(&potential) { continue; }
-            if self.node_at(&potential, corruptions_num) == Node::Empty {
+            if self.node_at(&potential) == Node::Empty {
                 neighs.push(potential);
             }
         }
         neighs
     }
 
-    fn is_there_path(&self, corruptions_num: usize) -> bool {
+    fn shortest_path(&self) -> i64 {
         let mut queue = VecDeque::new();
         let mut visited = HashSet::new();
         let start = XY::new(0, 0);
@@ -163,9 +167,12 @@ impl Grid {
         visited.insert(start);
 
         while let Some((pos, dist)) = queue.pop_front() {
-            //dprintln!("pos, dist: {:?}", (pos, dist));
-            if pos == end { return true; }
-            for n in self.neighbours(&pos, corruptions_num) {
+            dprintln!("pos, dist: {:?}", (pos, dist));
+            if pos == end { return dist; }
+            for n in self.neighbours(&pos) {
+                if pos == XY::new(5, 0) {
+                    dprintln!("n: {:?}", n);
+                }
                 if visited.contains(&n) {
                     continue;
                 }
@@ -174,23 +181,7 @@ impl Grid {
             }
 
         }
-        return false;
-    }
-
-    fn first_blocker(&self) -> XY {
-        let mut s = 0;
-        let mut e = self.corruptions.len();
-        while s + 1 < e {
-            let mid = (s + e) / 2;
-            dprintln!("s, e, mid: {:?}", (s, e, mid));
-            if self.is_there_path(mid) {
-                s = mid;
-            } else {
-                e = mid;
-            }
-        }
-        if s == self.corruptions.len() { panic!("There was never any path!") }
-        return self.corruptions[s];
+        panic!("Found no path!")
     }
 }
 
@@ -198,8 +189,7 @@ fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
     let mut solution = Grid::from_input(lines_it);
 
-    let first_blocker = solution.first_blocker();
-    writeln!(output, "{},{}", first_blocker.x, first_blocker.y).unwrap();
+    writeln!(output, "{}", solution.shortest_path()).unwrap();
 }
 
 pub fn main() {
@@ -225,6 +215,7 @@ mod tests {
     fn sample() {
         test_ignore_whitespaces(
             "6
+            12
             5,4
             4,2
             4,5
@@ -250,7 +241,7 @@ mod tests {
             0,5
             1,6
             2,0",
-            "6,1",
+            "22",
         );
     }
 }
