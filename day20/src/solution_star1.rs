@@ -39,36 +39,38 @@ impl Solution {
         }
     }
 
-    fn arrangements_num(&self, pattern: &str, cache: &mut HashMap<String, i64>, pp: &str) -> i64 {
+    fn can_arrange(&self, pattern: &str, cache: &mut HashMap<String, bool>) -> bool {
         if let Some(res) = cache.get(pattern) {
             return *res;
         }
-        let mut patt_options = 0;
         if self.towels.contains(pattern) {
-            patt_options += 1;
+            return true;
         }
         let mut prefix_len = 1;
-        dprintln!("{}pattern: {:?}", pp, pattern);
+        dprintln!("pattern: {:?}", pattern);
         while prefix_len < pattern.len() {
             let prefix = &pattern[..prefix_len];
             let suffix = &pattern[prefix_len..];
             prefix_len += 1;
+            dprintln!("prefix_len: {}, pattern.len(): {}", prefix_len, pattern.len());
+            dprintln!("prefix, suffix: {:?}", (prefix, suffix));
             if !self.towels.contains(prefix) { continue; }
+            dprintln!("prefix is a towel");
 
-            let suffix_options = self.arrangements_num(suffix, cache, &(pp.to_string() + " "));
-            dprintln!("{}prefix, suffix, options: {:?}", pp, (prefix, suffix, suffix_options));
-            patt_options += suffix_options;
+            if self.can_arrange(suffix, cache) {
+                cache.insert(pattern.to_string(), true);
+                return true;
+            }
+            dprintln!("but suffix cannot");
         }
-        cache.insert(pattern.to_string(), patt_options);
-        dprintln!("{}pattern: {:?}", pp, (pattern, patt_options));
-        dprintln!("{}----", pp);
-        return patt_options;
+        cache.insert(pattern.to_string(), false);
+        return false;
     }
 
-    fn solve(&mut self) -> i64 {
+    fn solve(&mut self) -> usize {
         let designs = self.designs.clone();
         let mut cache = HashMap::new();
-        designs.iter().map(|x| self.arrangements_num(x, &mut cache, "")).sum()
+        designs.iter().filter(|x| self.can_arrange(x, &mut cache)).count()
     }
 }
 
@@ -112,7 +114,7 @@ mod tests {
             bwurrg
             brgr
             bbrgwb",
-            "16",
+            "6",
         );
     }
 }
