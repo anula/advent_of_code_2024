@@ -21,6 +21,7 @@ struct Registers {
     c: i64,
 }
 
+#[allow(dead_code)]
 impl Registers {
     fn from_slice(sli: &[i64]) -> Self {
         Self {
@@ -34,6 +35,7 @@ impl Registers {
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 struct ComboOp(i64);
 
+#[allow(dead_code)]
 impl ComboOp {
     fn val(&self, regs: &Registers) -> i64 {
         match self.0 {
@@ -58,6 +60,7 @@ enum Ins {
     Cdv(ComboOp),
 }
 
+#[allow(dead_code)]
 impl Ins {
     fn new(opcode: i64, operand: i64) -> Ins {
         match opcode {
@@ -81,17 +84,19 @@ struct Program {
     initial_regs: Registers,
 }
 
-
+#[allow(dead_code)]
 impl Program {
-    fn exec(&self) -> Vec<i64> {
-        let mut out = Vec::new();
+    fn exec_until_first_out(&self, a: i64) -> i64 {
         let mut ins_ptr: usize = 0;
-        let mut regs = self.initial_regs.clone();
+        let mut regs = Registers {
+            a,
+            b: 0,
+            c: 0,
+        };
 
         while ins_ptr < self.program.len() {
             let ins = Ins::new(self.program[ins_ptr], self.program[ins_ptr + 1]);
             dprintln!("ins_ptr: {}", ins_ptr);
-            dprintln!("regs: {:?}", regs);
             dprintln!("ins: {:?}", ins);
             match ins {
                 Ins::Adv(cop) => {
@@ -125,13 +130,12 @@ impl Program {
                 },
                 Ins::Out(cop) => {
                     let val = cop.val(&regs);
-                    out.push(val % 8);
-                    ins_ptr += 2;
+                    return val % 8;
                 },
                 Ins::Bdv(cop) => {
                     let val = cop.val(&regs);
-                    let pow = 1 << val;
-                    let res = regs.a / pow;
+                    //let pow = 1 << val;
+                    let res = regs.a >> val;
                     regs.b = res;
                     ins_ptr += 2;
                 },
@@ -143,9 +147,33 @@ impl Program {
                     ins_ptr += 2;
                 },
             }
+            dprintln!("after ins: {:?}, regs: {:?}", ins, regs);
         }
+        panic!("No outs!")
+    }
 
-        out
+    fn to_ins_sequentially(&self) -> Vec<Ins> {
+        let mut ins = Vec::new();
+        for i in (0..self.program.len()).step_by(2) {
+            ins.push(Ins::new(self.program[i], self.program[i + 1]));
+        }
+        ins
+    }
+
+    fn find_itself(&mut self, a_prefs: &[i64], ptr: usize) -> Vec<i64> {
+        let mut res = vec![];
+        dprintln!("a_prefs: {:?}, ptr: {}, self.program[ptr]: {}", a_prefs, ptr, self.program[ptr]);
+        for a_pref in a_prefs {
+            for a_suf in 0..8 {
+                let a = (a_pref << 3) + a_suf;
+                let out = self.exec_until_first_out(a);
+                if out == self.program[ptr] {
+                    res.push(a);
+                }
+            }
+        }
+        dprintln!(" - res: {:?}", res);
+        res
     }
 }
 
@@ -155,6 +183,7 @@ struct Solution {
     program: Program,
 }
 
+#[allow(dead_code)]
 impl Solution {
     fn from_input<I>(mut lines: I) -> Self
         where I: Iterator<Item = String>
@@ -181,16 +210,16 @@ impl Solution {
         }
     }
 
-    fn solve(&mut self) -> i64 {
-        let mut a = 0;
-        loop {
-            self.program.initial_regs.a = a;
-            let result = self.program.exec();
-            if result == self.program.program {
-                return a;
-            }
-            a += 1;
+    fn solve(&mut self ) -> i64 {
+        let mut pos_a = vec![0];
+        for i in (0..self.program.program.len()).rev() {
+            pos_a = self.program.find_itself(&pos_a, i);
         }
+        //if pos_a.len() != 1 {
+        //    panic!("Found wrong number of As: {:?}", pos_a);
+        //}
+        pos_a.sort();
+        pos_a[0]
     }
 }
 
@@ -198,6 +227,7 @@ fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
     let mut solution = Solution::from_input(lines_it);
     dprintln!("solution: {:?}", solution);
+    dprintln!("program: {:?}", solution.program.to_ins_sequentially());
 
     writeln!(output, "{}", solution.solve()).unwrap();
 }
