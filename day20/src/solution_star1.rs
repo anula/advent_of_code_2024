@@ -109,7 +109,6 @@ struct Grid {
 
 #[allow(dead_code)]
 impl Grid {
-    const MAX_SHORT: i64 = 20;
     fn from_input<I>(lines: I) -> Self
         where I: Iterator<Item = String>
     {
@@ -189,55 +188,14 @@ impl Grid {
         res
     }
 
-    fn nodes_at_dist(&self, pos: &XY, dist: i64) -> Vec<XY> {
-        if dist < 1 { panic!("dist has to be > 1"); } 
-
+    fn all_backwards_shortcuts(&self, pos: &XY) -> Vec<(XY, XY)> {
         let mut res = Vec::new();
-
-        let vert = XY::new(0, dist);
-        let hori = XY::new(dist, 0);
-        let top = pos.sub(&vert);
-        let bottom = pos.add(&vert);
-        let left = pos.sub(&hori);
-        let right = pos.add(&hori);
-
-        dprintln!("dist: {}, pos: {:?}, dirs: {:?}, {:?}, {:?}, {:?}", dist, pos, top, right, bottom, left);
-
-        let mut curr = top;
-
-        let step = XY::new(1, 1);
-        while curr != right {
-            //dprintln!("in top, curr: {:?}", curr);
-            if self.is_within(&curr) {
-                res.push(curr);
+        for short_end in self.all_neighbours(pos) {
+            for short_start in self.all_neighbours(&short_end) {
+                if short_start == *pos { continue; }
+                res.push((short_start, short_end));
             }
-            curr = curr.add(&step);
         }
-        
-        let step = XY::new(-1, 1);
-        while curr != bottom {
-            if self.is_within(&curr) {
-                res.push(curr);
-            }
-            curr = curr.add(&step);
-        }
-
-        let step = XY::new(-1, -1);
-        while curr != left {
-            if self.is_within(&curr) {
-                res.push(curr);
-            }
-            curr = curr.add(&step);
-        }
-
-        let step = XY::new(1, -1);
-        while curr != top {
-            if self.is_within(&curr) {
-                res.push(curr);
-            }
-            curr = curr.add(&step);
-        }
-        dprintln!("ret dist {}", dist);
         res
     }
 
@@ -280,25 +238,21 @@ impl Grid {
         let path_dist = dists.get(&self.end).unwrap();
         let path = path;
         let mut shorts = HashSet::new();
-        let mut checked_nodes = HashSet::new();
 
         {
             let mut next_pos = Some(self.end);
             while let Some(next) = next_pos {
-                //dprintln!("Some({:?})", next);
                 let dist = dists.get(&next).unwrap();
                 let dist_left = path_dist - dist;
-                for short_len in 2..=Grid::MAX_SHORT {
-                    for from_path in self.nodes_at_dist(&next, short_len) {
+                for shortcut in self.all_neighbours(&next) {
+                    for from_path in self.all_neighbours(&shortcut) {
+                        if from_path == next { continue; }
                         if !path.contains(&from_path) { continue; }
-                        if checked_nodes.contains(&(from_path, next)) { continue; }
                         let cut_dist = dists.get(&from_path).unwrap();
-                        let total_dist = cut_dist + (short_len as i64) - 1 + dist_left;
+                        let total_dist = cut_dist + 1 + dist_left;
                         let saved_dist = path_dist - total_dist;
-                        checked_nodes.insert((from_path, next));
-                        dprintln!("Found a short {:?} of len {} with saved_dist: {}",
-                            (from_path, next), short_len, saved_dist);
-                        if saved_dist >= at_least { shorts.insert((from_path, next)); }
+                        dprintln!("Found a short {:?} with saved_dist: {}", shortcut, saved_dist);
+                        if saved_dist >= at_least { shorts.insert(shortcut); }
                     }
                 }
                 next_pos = edges_back.get(&next).copied();
@@ -359,14 +313,10 @@ mod tests {
         assert_eq!(actual_outs, expected_outs);
     }
 
-    fn text_to_lines(input: &str) -> Vec<String>{
-        input.split("\n").map(|s| s.to_string()).collect()
-    }
-
     #[test]
     fn sample() {
         test_ignore_whitespaces(
-            "74
+            "64
             ###############
             #...#...#.....#
             #.#.#.#.#.###.#
@@ -382,32 +332,7 @@ mod tests {
             #.#.#.#.#.#.###
             #...#...#...###
             ###############",
-            "7",
+            "1",
         );
     }
-
-    #[test]
-    fn sample_more() {
-        let input = text_to_lines(
-            "###############
-            #...#...#.....#
-            #.#.#.#.#.###.#
-            #S#...#.#.#...#
-            #######.#.#.###
-            #######.#.#...#
-            #######.#.###.#
-            ###..E#...#...#
-            ###.#######.###
-            #...###...#...#
-            #.#####.#.###.#
-            #.#...#.#.#...#
-            #.#.#.#.#.#.###
-            #...#...#...###
-            ###############");
-        let grid = Grid::from_input(input.iter().cloned());
-        assert_eq!(grid.find_shortcuts(76), 3);
-        assert_eq!(grid.find_shortcuts(74), 7);
-        assert_eq!(grid.find_shortcuts(72), 29);
-    }
-
 }
