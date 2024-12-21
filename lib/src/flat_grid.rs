@@ -48,6 +48,16 @@ impl Direction {
         LEFT,
     ];
 
+    const fn from_char(c: char) -> Self {
+        match c {
+            'v' => DOWN,
+            '<' => LEFT,
+            '^' => UP,
+            '>' => RIGHT,
+            _ => panic!("dont know that dir char"),
+        }
+    }
+
     const fn as_coords(&self) -> XY {
         match self {
             UP => XY::new(0, -1),
