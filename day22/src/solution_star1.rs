@@ -1,10 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
-use std::cmp::max;
+//use std::cmp::{max, min};
 //use regex::Regex;
 //use lazy_static::lazy_static;
-use std::collections::HashSet;
-use std::collections::HashMap;
-use std::collections::VecDeque;
+//use std::collections::HashSet;
+//use std::collections::HashMap;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -44,36 +43,6 @@ impl SecretNum {
         }
         res
     }
-
-    fn price(&self) -> i64 {
-        self.0 % 10
-    }
-
-    fn all_sequences(&self, iterations: usize) -> HashMap<Vec<i64>, i64> {
-        let mut last_4_prices = VecDeque::new();
-        let mut last_4_diffs = VecDeque::new();
-        let mut num = self.clone();
-        let mut seqs = HashMap::new();
-        for i in 0..iterations {
-            if i > 0 {
-                last_4_diffs.push_back(num.price() - last_4_prices.back().unwrap());
-            }
-            last_4_prices.push_back(num.price());
-            if last_4_diffs.len() > 4 { last_4_diffs.pop_front(); }
-            if last_4_prices.len() > 4 { last_4_prices.pop_front(); }
-
-            if last_4_diffs.len() == 4 {
-                let diffs: Vec<i64> = last_4_diffs.iter().cloned().collect();
-                if !seqs.contains_key(&diffs) {
-                    seqs.insert(diffs, num.price());
-                }
-            }
-
-            num = num.step();
-        }
-
-        seqs
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -96,41 +65,16 @@ impl Solution {
         }
     }
 
-    fn val_for_seq(seqs_per_num: &[HashMap<Vec<i64>, i64>], seq: &Vec<i64>) -> i64 {
-        let mut res = 0;
-        for seqs in seqs_per_num {
-            if let Some(p) = seqs.get(seq) {
-                res += p;
-            }
-        }
-        res
-    }
-
-    fn solve(&self, iterations: usize) -> i64 {
-        let mut seqs_per_num = vec![];
-        let mut pot_sequences = HashSet::new();
-        for n in &self.nums {
-            let seq = n.all_sequences(iterations);
-            for key in seq.keys().cloned() {
-                pot_sequences.insert(key);
-            }
-            seqs_per_num.push(seq);
-        }
-
-        let mut maximum = 0;
-        for seq in pot_sequences {
-            maximum = max(maximum, Self::val_for_seq(&seqs_per_num, &seq));
-        }
-
-        maximum
+    fn solve(&self) -> i64 {
+        self.nums.iter().map(|n| n.multi_step(2000).0).sum()
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Solution::from_input(lines_it);
+    let mut solution = Solution::from_input(lines_it);
 
-    writeln!(output, "{}", solution.solve(2000)).unwrap();
+    writeln!(output, "{}", solution.solve()).unwrap();
 }
 
 pub fn main() {
@@ -161,10 +105,10 @@ mod tests {
     fn sample() {
         test_ignore_whitespaces(
             "1
-            2
-            3
+            10
+            100
             2024",
-            "23",
+            "37327623",
         );
     }
 
