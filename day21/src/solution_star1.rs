@@ -1,11 +1,10 @@
 use std::io::{BufRead, BufReader, Write};
-use std::cmp::min;
-use itertools::Itertools;
+//use std::cmp::{max, min};
 //use regex::Regex;
 //use lazy_static::lazy_static;
-//use std::collections::HashSet;
+use std::collections::HashSet;
 use std::collections::HashMap;
-//use std::collections::VecDeque;
+use std::collections::VecDeque;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -163,61 +162,22 @@ impl Keypad {
         self.vals.contains_key(pos)
     }
 
-    fn is_valid(&self, start_key: &XY, path: &[char]) -> bool {
-        let mut curr_key = start_key.clone();
-        for c in path {
-            let dir = Direction::from_char(*c);
-            curr_key = curr_key.step(&dir);
-            if !self.is_within(&curr_key) { return false; }
+    // Returns Option<new position, Option<output>>
+    fn step(&self, start: char, step: char) -> Option<(char, Option<char>)> {
+        match step {
+            'A' => Some((start, Some(start))),
+            '<' | '>' | '^' | 'v' => {
+                let dir = Direction::from_char(step);
+                let new_pos = self.keys.get(&start).unwrap().step(&dir);
+                if !self.is_within(&new_pos) {
+                    return None;
+                }
+                Some((*self.vals.get(&new_pos).unwrap(), None))
+            },
+            _ => panic!("unknown step: {}", step),
         }
-        true
     }
 
-    fn really_all_dir_paths(&self, start: char, end: char) -> Vec<Vec<char>> {
-        let start_key = self.keys.get(&start).unwrap();
-        let end_key = self.keys.get(&end).unwrap();
-
-        let mut vert = {
-            let c = if start_key.y < end_key.y {
-                'v'
-            } else {
-                '^'
-            };
-
-            vec![c; (end_key.y - start_key.y).abs() as usize]
-        };
-
-        let mut hori = {
-            let c = if start_key.x < end_key.x {
-                '>'
-            } else {
-                '<'
-            };
-
-            vec![c; (end_key.x - start_key.x).abs() as usize]
-        };
-
-        let mut all_dirs = Vec::new();
-        all_dirs.append(&mut hori);
-        all_dirs.append(&mut vert);
-        let all_dirs_len = all_dirs.len();
-
-        let mut res = vec![];
-        for perm in all_dirs.into_iter().permutations(all_dirs_len) {
-            if self.is_valid(&start_key, &perm) {
-                res.push(perm);
-            }
-        }
-        res
-    }
-
-    fn all_paths(&self, start: char, end: char) -> Vec<Vec<char>> {
-        let mut res = self.really_all_dir_paths(start, end);
-        for r in &mut res {
-            r.push('A');
-        }
-        res
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -226,53 +186,83 @@ struct KeypadSeq {
 }
 
 impl KeypadSeq {
-    fn new(dir_pads: usize) -> Self {
-        let mut pads = vec![Keypad::dirkeypad(); dir_pads];
-        pads.push(Keypad::numkeypad());
+    fn new(pads: Vec<Keypad>) -> Self {
         Self {
-          pads
+            pads,
         }
     }
 
-    fn shortest_path(&self, start: char, end: char, idx: usize, cache: &mut HashMap<(usize, char, char), usize>) -> usize {
-        let _indent = vec![' '; self.pads.len() - idx].into_iter().collect::<String>();
-        dprintln!("{}shortest path: {:?}, idx: {} {{", _indent, (start, end), idx);
-        if let Some(res) = cache.get(&(idx, start, end)) {
-            return *res;
+    fn advance_state(&self, state: &[char], step: char) -> Option<(Vec<char>, Option<char>)> {
+        if state.len() == 0 {
+            return Some((vec![], Some(step)));
         }
-        let mut min_path = usize::MAX;
-        for path in self.pads[idx].all_paths(start, end) {
-            dprintln!("{}- checking path: {:?}", _indent, path);
-            let len = if idx == 0 {
-                path.len()
-            } else {
-                let mut ins_len = 0;
-                let mut prev = 'A';
-                for c in path {
-                    ins_len += self.shortest_path(prev, c, idx - 1, cache);
-                    prev = c;
+        let curr_idx = self.pads.len() - state.len();
+        let new_curr = self.pads[curr_idx].step(state[0], step);
+        //dprintln!("curr_idx, new_curr: {:?}", (curr_idx, new_curr));
+        let Some((curr_st, o_curr_out)) = new_curr else {
+            return None;
+        };
+        match step {
+            'A' => {
+                if let Some(curr_out) = o_curr_out {
+                    let mut out = vec![curr_st];
+                    let Some((mut prt_st, out)) = self.advance_state(&state[1..], curr_out) else {
+                        return None;
+                    };
+                    prt_st.insert(0, curr_st);
+                    Some((prt_st, out))
+                } else {
+                    let mut st = state.to_vec();
+                    st[0] = curr_st;
+                    Some((st, None))
                 }
-                ins_len
-            };
-            min_path = min(min_path, len);
+            },
+            '<' | '>' | '^' | 'v' => {
+                let mut st = state.to_vec();
+                st[0] = curr_st;
+                Some((st, None))
+            },
+            _ => panic!("wrong char to advance: {}", step),
         }
-
-        if min_path == usize::MAX { panic!("Found no path at all!"); }
-        dprintln!("{}}} shortest path: {:?}, idx: {} = {}", _indent, (start, end), idx, min_path);
-        cache.insert((idx, start, end), min_path);
-        min_path
     }
 
-    fn shortest_code(&self, code: &str) -> usize {
-        let mut res = 0;
-        let mut prev = 'A';
-        let mut cache = HashMap::new();
-        for c in code.chars() {
-            res += self.shortest_path(prev, c, self.pads.len() - 1, &mut cache);
-            prev = c;
+    fn neighbours(&self, state: &[char]) -> Vec<((char, char, char), Option<char>)> {
+        let mut neighs = Vec::new();
+        for c in vec!['<', '^', '>', 'v', 'A'] {
+            let pot_state = self.advance_state(&state[0..3], c);
+            if let Some((st, out)) = pot_state {
+                let state = (st[0], st[1], st[2]);
+                neighs.push((state, out));
+            }
         }
-        res
+        neighs
     }
+
+    fn shortest_path(&self, start: char, end: char) -> i64 {
+        let mut queue = VecDeque::new();
+        let mut dists = HashMap::new();
+
+        let start_state = ('A', 'A', start);
+        queue.push_back(start_state);
+        dists.insert(start_state, 0);
+
+        while let Some(state) = queue.pop_front() {
+            let curr_dist = *dists.get(&state).unwrap();
+            let state_vec = vec![state.0, state.1, state.2];
+            for (n_state, o_n_out) in self.neighbours(&state_vec) {
+                if let Some(n_out) = o_n_out {
+                    if n_out == end {
+                        return curr_dist + 1;
+                    }
+                }
+                if dists.contains_key(&n_state) { continue; }
+                dists.insert(n_state, curr_dist + 1);
+                queue.push_back(n_state);
+            }
+        }
+        panic!("did not find it")
+    }
+
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -300,11 +290,20 @@ impl Solution {
     }
 
     fn solve(&self) -> i64 {
-        let pads = KeypadSeq::new(25);
+        let robot1 = Keypad::numkeypad();
+        let robot2 = Keypad::dirkeypad();
+        let robot3 = Keypad::dirkeypad();
+        let pads = KeypadSeq::new(vec![robot3, robot2, robot1]);
 
         let mut res = 0;
         for code in &self.codes {
-            res += (pads.shortest_code(code) as i64) * Self::num_code(code);
+            let mut p_char = 'A';
+            let mut in_len = 0;
+            for c in code.chars() {
+                in_len += pads.shortest_path(p_char, c);
+                p_char = c;
+            }
+            res += Self::num_code(code) * in_len;
         }
         res
     }
@@ -312,7 +311,7 @@ impl Solution {
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Solution::from_input(lines_it);
+    let mut solution = Solution::from_input(lines_it);
 
     writeln!(output, "{}", solution.solve()).unwrap();
 }
@@ -327,7 +326,6 @@ pub fn main() {
 mod tests {
     use super::*;
 
-    #[allow(dead_code)]
     fn test_ignore_whitespaces(input: &str, output: &str) {
         let mut actual_out: Vec<u8> = Vec::new();
         solve(input.as_bytes(), &mut actual_out);
@@ -338,18 +336,30 @@ mod tests {
     }
 
     #[test]
-    fn small_keypads_sample() {
-        let pads = KeypadSeq::new(2);
-        assert_eq!(pads.shortest_code("029A"), 68);
-        assert_eq!(pads.shortest_code("980A"), 60);
-        assert_eq!(pads.shortest_code("179A"), 68);
-        assert_eq!(pads.shortest_code("456A"), 64);
-        assert_eq!(pads.shortest_code("379A"), 64);
+    fn sample() {
+        test_ignore_whitespaces(
+            "029A
+            980A
+            179A
+            456A
+            379A",
+            "126384",
+        );
     }
 
     #[test]
-    fn small_keypads_broken_down() {
-        let pads = KeypadSeq::new(2);
-        assert_eq!(pads.shortest_code("0"), 18);
+    fn sample_short() {
+        test_ignore_whitespaces(
+            "029A",
+            "1972",
+        );
+    }
+
+    #[test]
+    fn sample_bad() {
+        test_ignore_whitespaces(
+            "379A",
+            "24256",
+        );
     }
 }
