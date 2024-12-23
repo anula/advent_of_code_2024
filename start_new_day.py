@@ -23,6 +23,10 @@ parser.add_argument('--input_url', type=str,
 parser.add_argument('--secrets', type=str,
                     default='secrets.json',
                     help='JSON file with secrets, eg. for login')
+parser.add_argument('--only_input', action='store_true',
+                    default=False,
+                    help='Only downloads input for the given day, assumes '
+                         'that the day already exists.')
 
 
 MAIN_FILE = 'main.rs'
@@ -91,11 +95,15 @@ def main():
 
   day_name = f'day{args.day_number}'
 
-  if os.path.isdir(day_name):
-    print(f'Directory "{day_name}" already exists, aborting...')
-    return
+  if not args.only_input:
+    if os.path.isdir(day_name):
+      print(f'Directory "{day_name}" already exists, aborting...')
+      return
 
-  cargo_init(day_name, args.templates_dir)
+    cargo_init(day_name, args.templates_dir)
+
+  if not os.path.isdir(day_name):
+    print(f'Directory "{day_name}" was not created. Aborting input download...')
 
   secrets = parse_secrets(args.secrets)
   download_input(
