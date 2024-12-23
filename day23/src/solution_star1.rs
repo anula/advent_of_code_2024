@@ -46,33 +46,25 @@ impl Graph {
         self.adjs.get(a).unwrap().contains(b)
     }
 
-    fn is_clique(&self, verts: &[String]) -> bool {
-        for i in 0..verts.len() {
-            for j in (i+1)..verts.len() {
-                if !self.is_neigh(&verts[i], &verts[j]) {
-                    return false;
-                }
-            }
-        }
-        true
-    }
+    fn all_cliques_with_t(&self) -> usize {
+        let mut cliques_with_t = HashSet::new();
 
-    fn find_a_simple_clique(&self) -> Vec<String> {
-
-        for l in (1..14).rev() {
-            for v in &self.verts {
-                let mut candidate = self.adjs.get(v).unwrap()[0..l].to_vec();
-                candidate.push(v.to_string());
-                if self.is_clique(&candidate) {
-                    println!("Found!: {:?}", candidate);
-                    println!("Len!: {:?}", candidate.len());
-                    candidate.sort();
-                    return candidate;
+        for v in &self.verts {
+            if !v.starts_with('t') { continue; }
+            let neighs = self.adjs.get(v).unwrap();
+            for i in 0..neighs.len() {
+                for j in (i+1)..neighs.len() {
+                    if self.is_neigh(&neighs[i], &neighs[j]) {
+                        let mut clique = vec![v.to_string(), neighs[i].to_string(), neighs[j].to_string()];
+                        clique.sort();
+                        dprintln!("Found clique: {:?}", clique);
+                        cliques_with_t.insert(clique);
+                    }
                 }
             }
         }
 
-        vec![]
+        cliques_with_t.len()
     }
 }
 
@@ -90,17 +82,16 @@ impl Solution {
         }
     }
 
-    fn solve(&self) -> Vec<String> {
-        self.graph.find_a_simple_clique()
+    fn solve(&self) -> usize {
+        self.graph.all_cliques_with_t()
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
     let solution = Solution::from_input(lines_it);
-    //println!("sol: {:?}", solution);
 
-    writeln!(output, "{}", solution.solve().join(",")).unwrap();
+    writeln!(output, "{}", solution.solve()).unwrap();
 }
 
 pub fn main() {
@@ -157,7 +148,7 @@ mod tests {
             wh-qp
             tb-vc
             td-yn",
-            "co,de,ka,ta",
+            "7",
         );
     }
 }
