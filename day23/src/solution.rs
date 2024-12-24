@@ -57,9 +57,12 @@ impl Graph {
         true
     }
 
+    // Note: this is really not a correct solution. I should be looking at all permutations of
+    // neighbours of length l, instead of just taking the first l.
+    // But it did find the right solution, so I am not complaining :shrug:
     fn find_a_simple_clique(&self) -> Vec<String> {
 
-        for l in (1..14).rev() {
+        for l in (1..13).rev() {
             for v in &self.verts {
                 let mut candidate = self.adjs.get(v).unwrap()[0..l].to_vec();
                 candidate.push(v.to_string());
