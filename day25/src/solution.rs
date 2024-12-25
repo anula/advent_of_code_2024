@@ -27,20 +27,38 @@ struct Item {
     heights: Vec<usize>,
 }
 
+impl Item {
+    fn fits_with(&self, other: &Item) -> bool {
+        if self.typ == other.typ {
+            panic!("Trying to fit together: {:?}", (self, other));
+        }
+
+        for i in 0..5 {
+            let sum = self.heights[i] + other.heights[i];
+            if sum > 5 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct Solution {
-    items: Vec<Item>,
+    locks: Vec<Item>,
+    keys: Vec<Item>,
 }
 
 impl Solution {
     fn from_input<I>(mut lines: I) -> Self
         where I: Iterator<Item = String>
     {
-        let mut items = vec![];
+        let mut locks = vec![];
+        let mut keys = vec![];
         loop {
-            let mut columns = vec![vec![]; 5];
             let mut idx = 0;
-            let typ;
+            let mut typ = Type::Lock;
+            let mut columns = vec![vec![]; 5];
             for l in lines.by_ref() {
                 let line = l.trim();
                 if line == "" {
@@ -64,25 +82,44 @@ impl Solution {
             if columns[0].len() == 0 {
                 break;
             }
-            //let mut heihts
-            //items.push(Item {
-            //    typ,
-
-            //}
+            let item = Item {
+                heights: columns.iter()
+                    .map(|v|
+                        v.iter().filter(|&c| *c == '#').count() - 1
+                    )
+                    .collect(),
+                    typ,
+            };
+            if typ == Type::Key {
+                keys.push(item);
+            } else {
+                locks.push(item);
+            }
         }
 
         Solution {
+            locks,
+            keys,
         }
     }
 
     fn solve(&self) -> i64 {
-        0
+        let mut res = 0;
+        for lock in &self.locks {
+            for key in &self.keys {
+                if lock.fits_with(&key) {
+                    res += 1;
+                }
+            }
+        }
+        res
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let mut solution = Solution::from_input(lines_it);
+    let solution = Solution::from_input(lines_it);
+    dprintln!("Sol: {:?}", solution);
 
     writeln!(output, "{}", solution.solve()).unwrap();
 }
@@ -109,8 +146,46 @@ mod tests {
     #[test]
     fn sample() {
         test_ignore_whitespaces(
-            "",
-            "0",
+            "#####
+            .####
+            .####
+            .####
+            .#.#.
+            .#...
+            .....
+
+            #####
+            ##.##
+            .#.##
+            ...##
+            ...#.
+            ...#.
+            .....
+
+            .....
+            #....
+            #....
+            #...#
+            #.#.#
+            #.###
+            #####
+
+            .....
+            .....
+            #.#..
+            ###..
+            ###.#
+            ###.#
+            #####
+
+            .....
+            .....
+            .....
+            #....
+            #.#..
+            #.#.#
+            #####",
+            "3",
         );
     }
 }
