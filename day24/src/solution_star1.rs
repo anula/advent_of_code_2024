@@ -8,7 +8,7 @@ use std::collections::HashMap;
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
         {
-//	    #[cfg(test)]
+	    #[cfg(test)]
             println!($($x), *);
         }
     };
@@ -109,18 +109,8 @@ impl Solution {
         }
     }
 
-    fn to_binary_rev(x: i64) -> Vec<u8> {
-        let mut left = x;
-        let mut res = Vec::new();
-        while left > 0 {
-            res.push((left % 2) as u8);
-            left /= 2;
-        }
-        res
-    }
-
-    fn to_number(start_letter: &str, z_vals: &HashMap<String, u8>) -> i64 {
-        let mut zs: Vec<&String>  = z_vals.keys().filter(|k| k.starts_with(start_letter)).collect();
+    fn zs_to_number(z_vals: &HashMap<String, u8>) -> i64 {
+        let mut zs: Vec<&String>  = z_vals.keys().collect();
         zs.sort();
         let mut out: i64 = 0;
         for i in 0..zs.len() {
@@ -130,31 +120,13 @@ impl Solution {
         out
     }
 
-    fn wrong_bits(vals: &HashMap<String, u8>, correct: i64) {
-        let mut zs: Vec<&String>  = vals.keys().filter(|k| k.starts_with("z")).collect();
-        zs.sort();
-
-        let bin_correct = Self::to_binary_rev(correct);
-
-        for i in 0..zs.len() {
-            let val = *vals.get(zs[i]).unwrap();
-            if val != bin_correct[i] {
-                println!("[{}] was: {} but should be: {}", i, val, bin_correct[i]);
-            }
-        }
-
-    }
-
     fn solve(&self) -> i64 {
         let mut curr_vals = self.init_values.clone();
-        let mut z_num = 0;
+        let mut z_vals = HashMap::new();
 
-        let mut its = 0;
-        while z_num < self.z_num {
-            its += 1;
-            let mut only_z = curr_vals.iter().filter(|(k, _)| k.starts_with("z")).collect::<Vec<(&String, &u8)>>();
-            only_z.sort_by_key(|(k, _)| k.to_string());
-            dprintln!("only z: {:?}", only_z);
+        while z_vals.len() < self.z_num {
+            dprintln!("curr_vals: {:?}", curr_vals);
+            dprintln!("z_vals: {:?}", z_vals);
             if curr_vals.len() == 0 {
                 panic!("No values!");
             }
@@ -164,22 +136,14 @@ impl Solution {
                 };
 
                 curr_vals.insert(g.out.to_string(), out);
+                if g.out.starts_with("z") {
+                    z_vals.insert(g.out.to_string(), out);
+                }
             }
-            z_num = curr_vals.iter().filter(|(k, _)| k.starts_with("z")).count();
         }
 
-        let x = Self::to_number("x", &curr_vals);
-        let y = Self::to_number("y", &curr_vals);
 
-        let expected = x + y;
-        Self::wrong_bits(&curr_vals, expected);
-        dprintln!("x: {}", Self::to_number("x", &curr_vals));
-        dprintln!("y: {}", Self::to_number("y", &curr_vals));
-        dprintln!("z: {}", Self::to_number("z", &curr_vals));
-        dprintln!("its: {}", its);
-
-
-        Self::to_number("z", &curr_vals)
+        Self::zs_to_number(&z_vals)
     }
 }
 
@@ -310,6 +274,6 @@ mod tests {
             ("z04".to_string(), 1),
             ("z03".to_string(), 0),
         ]);
-        assert_eq!(Solution::to_number("z", &z_vals), 10);
+        assert_eq!(Solution::zs_to_number(&z_vals), 10);
     }
 }
