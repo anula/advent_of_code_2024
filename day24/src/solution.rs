@@ -1,9 +1,11 @@
 use std::io::{BufRead, BufReader, Write};
-use std::cmp::max;
 use regex::Regex;
 use lazy_static::lazy_static;
-//use std::collections::HashSet;
+use std::collections::HashSet;
 use std::collections::HashMap;
+use rand::Rng;
+use itertools::Itertools;
+use std::collections::VecDeque;
 
 macro_rules! dprintln {
     ( $( $x:expr ),* ) => {
@@ -12,6 +14,12 @@ macro_rules! dprintln {
             println!($($x), *);
         }
     };
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+enum GtSt {
+    BAD,
+    GOOD,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -29,6 +37,14 @@ impl Op {
             "XOR" => Op::XOR,
             _ => panic!("Don't know that Op: {:?}", op),
         }
+    }
+
+    fn to_str(&self) -> String {
+        match self {
+            Op::AND => "AND",
+            Op::OR  => "OR",
+            Op::XOR => "XOR",
+        }.to_string()
     }
 
     fn eval(&self, a: u8, b: u8) -> u8 {
@@ -76,12 +92,29 @@ impl Gate {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Solution {
-    init_values: HashMap<String, u8>,
-    z_num: usize,
-    gates: Vec<Gate>,
+    size: usize,
+    gates: HashMap<String, Gate>,
 }
 
 impl Solution {
+    const INT_ADDS: [(i64, i64); 14] = [
+        (33990941402531, 22738689785549),
+        (35184372088831, 35184372088831),
+        (24546275348541, 31894036836153),
+        (14676699754771, 32511573513569),
+        (16533995937772, 25556078852050),
+        (22084950160754, 25857126195856),
+        (18447922774982, 30278130441237),
+        (21661833849402, 28174804130689),
+        (27260905902565, 25234030021653),
+        (28988167108136, 21344516261901),
+        (23540191997855, 31976529959358),
+        (22801674810239, 21539533729933),
+        (32000932786263, 18885865307825),
+        (18120406095288, 22836369738318),
+
+    ];
+
     fn from_input<I>(mut lines: I) -> Self
         where I: Iterator<Item = String>
     {
@@ -89,13 +122,10 @@ impl Solution {
             static ref VAL_RE: Regex = Regex::new(r"(\w{3}): (\d)").unwrap();
         }
 
-        let mut init_values = HashMap::new();
         let mut gates = Vec::new();
         for l in lines.by_ref() {
             let line = l.trim();
             if line == "" { break; }
-            let caps = VAL_RE.captures(line).unwrap();
-            init_values.insert(caps[1].to_string(), caps[2].parse::<u8>().unwrap());
         }
         for l in lines {
             let line = l.trim();
@@ -103,16 +133,23 @@ impl Solution {
         }
 
         Solution {
-            init_values,
-            z_num: gates.iter().filter(|g| g.out.starts_with("z")).count(),
-            gates,
+            size: gates.iter().filter(|g| g.out.starts_with("z")).count(),
+            gates: gates.into_iter().map(|g| (g.out.to_string(), g)).collect(),
         }
     }
 
-    fn to_binary_rev(x: i64) -> Vec<u8> {
+    fn is_input_val(val: &String) -> bool {
+        val.starts_with("x") || val.starts_with("y")
+    }
+
+    fn is_output_val(val: &String) -> bool {
+        val.starts_with("z")
+    }
+
+    fn to_binary_rev(&self, x: i64) -> Vec<u8> {
         let mut left = x;
         let mut res = Vec::new();
-        while left > 0 {
+        for i in 0..self.size {
             res.push((left % 2) as u8);
             left /= 2;
         }
@@ -130,35 +167,76 @@ impl Solution {
         out
     }
 
-    fn wrong_bits(vals: &HashMap<String, u8>, correct: i64) {
-        let mut zs: Vec<&String>  = vals.keys().filter(|k| k.starts_with("z")).collect();
+    fn expression_for_out(&self, out: &String) -> String {
+        if Self::is_input_val(out) {
+            return out.to_string();
+        }
+        let g = self.gates.get(out).unwrap();
+        format!("({}) {:?} ({})",
+            self.expression_for_out(&g.ins.0), g.op, self.expression_for_out(&g.ins.1))
+    }
+
+    fn wrong_bits(&self, sol: &HashMap<String, u8>, correct: i64)  -> Vec<usize> {
+        let mut zs: Vec<&String>  = sol.keys().filter(|k| k.starts_with("z")).collect();
         zs.sort();
 
-        let bin_correct = Self::to_binary_rev(correct);
+        let bin_correct = self.to_binary_rev(correct);
 
+        let mut res = vec![];
         for i in 0..zs.len() {
-            let val = *vals.get(zs[i]).unwrap();
+            let val = *sol.get(zs[i]).unwrap();
             if val != bin_correct[i] {
-                println!("[{}] was: {} but should be: {}", i, val, bin_correct[i]);
+                res.push(i);
+            }
+        }
+        res
+    }
+
+    fn find_wrong_bits(&self) -> Vec<usize> {
+        let mut wrongs: HashSet<usize> = {
+            let (a, b) = Self::INT_ADDS[0];
+            let output = self.eval_as_adder(a, b);
+
+            self.wrong_bits(&output, a + b).into_iter().collect()
+        };
+
+        for &(a, b) in Self::INT_ADDS.iter().skip(1) {
+            let output = self.eval_as_adder(a, b);
+
+            let other_wrongs = self.wrong_bits(&output, a + b);
+            wrongs.extend(other_wrongs);
+        }
+
+        for _ in 0..1000 {
+            let a = rand::thread_rng().gen_range((1<<44)..(1<<45));
+            let b = rand::thread_rng().gen_range((1<<44)..(1<<45));
+            let output = self.eval_as_adder(a, b);
+
+            let other_wrongs: HashSet<usize> = self.wrong_bits(&output, a + b).into_iter().collect();
+            let new_wrongs = other_wrongs.difference(&wrongs).cloned().collect::<HashSet<usize>>();
+            if new_wrongs.len() > 0 {
+                println!("Found new wrongs! (a,b): {:?}, wrongs: {:?}", (a, b), new_wrongs);
+                wrongs.extend(new_wrongs);
             }
         }
 
+        let mut vec_wrongs: Vec<usize> = wrongs.into_iter().collect();
+        vec_wrongs.sort();
+        println!("Wrongs: {:?}", vec_wrongs);
+        vec_wrongs
     }
 
-    fn solve(&self) -> i64 {
-        let mut curr_vals = self.init_values.clone();
+
+    fn eval(&self, init_values: &HashMap<String, u8>) -> HashMap<String, u8> {
+        let mut curr_vals = init_values.clone();
         let mut z_num = 0;
 
-        let mut its = 0;
-        while z_num < self.z_num {
-            its += 1;
+        while z_num < self.size {
             let mut only_z = curr_vals.iter().filter(|(k, _)| k.starts_with("z")).collect::<Vec<(&String, &u8)>>();
             only_z.sort_by_key(|(k, _)| k.to_string());
-            dprintln!("only z: {:?}", only_z);
-            if curr_vals.len() == 0 {
-                panic!("No values!");
-            }
-            for g in &self.gates {
+            //dprintln!("only z: {:?}", only_z);
+
+            for g in self.gates.values() {
                 let Some(out) = g.eval(&curr_vals) else {
                     continue;
                 };
@@ -168,26 +246,146 @@ impl Solution {
             z_num = curr_vals.iter().filter(|(k, _)| k.starts_with("z")).count();
         }
 
-        let x = Self::to_number("x", &curr_vals);
-        let y = Self::to_number("y", &curr_vals);
+        curr_vals
+    }
 
-        let expected = x + y;
-        Self::wrong_bits(&curr_vals, expected);
-        dprintln!("x: {}", Self::to_number("x", &curr_vals));
-        dprintln!("y: {}", Self::to_number("y", &curr_vals));
-        dprintln!("z: {}", Self::to_number("z", &curr_vals));
-        dprintln!("its: {}", its);
+    fn bit_to_name(prefix: &str, bit_no: usize) -> String {
+        format!("{}{:0>2}", prefix, bit_no)
+    }
+
+    fn to_set(&self, prefix: &str, num: i64) -> HashMap<String, u8> {
+        self.to_binary_rev(num).iter().enumerate()
+            .map(|(i, d)| (Self::bit_to_name(prefix, i), *d))
+            .collect()
+    }
+
+    fn eval_as_adder(&self, x: i64, y: i64) -> HashMap<String, u8> {
+        let mut input = self.to_set("x", x);
+        input.extend(self.to_set("y", y));
+
+        self.eval(&input)
+    }
+
+    fn as_adder(&self, x: i64, y: i64) -> i64 {
+        let output = self.eval_as_adder(x, y);
+        Self::to_number("z", &output)
+    }
+
+    fn is_correct_adder(&self) -> bool {
+        for (a, b) in Self::INT_ADDS {
+            let computed = self.as_adder(a, b);
+            if computed != a + b {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn mark_as(&self, gt: &String, st: GtSt, states: &mut HashMap<String, GtSt>) {
+        states.insert(gt.to_string(), st);
+        let Some(gate) = self.gates.get(gt) else {
+            return;
+        };
+        self.mark_as(&gate.ins.0, st, states);
+        self.mark_as(&gate.ins.1, st, states);
+    }
+
+    fn swap(&self, gt1: &String, gt2: &String) -> Self {
+        let mut gates = self.gates.clone();
+        let gt1_ptr = gates.get_mut(gt1).unwrap() as *mut Gate;
+        let gt2_ptr = gates.get_mut(gt2).unwrap() as *mut Gate;
+        unsafe {
+            std::ptr::swap(gt1_ptr, gt2_ptr);
+        }
+
+        gates.get_mut(gt1).unwrap().out = gt1.to_string();
+        gates.get_mut(gt2).unwrap().out = gt2.to_string();
+
+        Self {
+            size: self.size,
+            gates,
+        }
+    }
+
+    fn print_dot(&self) {
+        println!("digraph G {{");
+        let mut all_out = vec![];
+        for i in 0..self.size {
+            all_out.push(Self::bit_to_name("z", i));
+        }
+
+        let mut queue = VecDeque::new();
+        for o in all_out {
+            queue.push_back(o.to_string());
+        }
+        let mut visited = HashSet::new();
+
+        while let Some(g_out) = queue.pop_front() {
+            if !visited.insert(g_out.to_string()) { continue; }
+            let Some(g) = self.gates.get(&g_out) else {
+                continue;
+            };
+            let g_str = format!("{}_{}", g.op.to_str(), g_out);
+            println!("  {} -> {}", g_str, g_out);
+            println!("  {} -> {}", g.ins.0, g_str);
+            println!("  {} -> {}", g.ins.1, g_str);
+
+            queue.push_back(g.ins.0.to_string());
+            queue.push_back(g.ins.1.to_string());
+        }
 
 
-        Self::to_number("z", &curr_vals)
+        println!("}}");
+    }
+
+    fn analyze(&self) {
+        let wrongs = self.find_wrong_bits();
+        let mut gate_states = HashMap::new();
+
+        for bit_no in &wrongs {
+            self.mark_as(&Self::bit_to_name("z", *bit_no), GtSt::BAD, &mut gate_states);
+        }
+
+        for bit_no in 0..self.size {
+            if wrongs.contains(&bit_no) { continue; }
+            self.mark_as(&Self::bit_to_name("z", bit_no), GtSt::GOOD, &mut gate_states);
+        }
+
+        let bad_gates: Vec<String> = gate_states.iter()
+            .filter(|(_, v)| **v == GtSt::BAD)
+            .map(|(k, _)| k.to_string())
+            .collect();
+
+        if bad_gates.len() == 0 {
+            println!("Hurray! No bads!");
+        } else {
+            println!("Bad gates: {:?}", bad_gates);
+            println!("Bad gates num: {:?}", bad_gates.len());
+        }
     }
 }
 
 fn solve<R: BufRead, W: Write>(input: R, mut output: W) {
     let lines_it = BufReader::new(input).lines().map(|l| l.unwrap());
-    let solution = Solution::from_input(lines_it);
+    let mut solution = Solution::from_input(lines_it);
 
-    writeln!(output, "{}", solution.solve()).unwrap();
+    let mut swaps = vec![
+        ("bjm", "z07"),
+        ("hsw", "z13"),
+        ("skf", "z18"),
+        ("nvr", "wkr"),
+    ];
+    for (a, b) in &swaps {
+        solution = solution.swap(&a.to_string(), &b.to_string());
+    }
+
+    //solution.print_dot();
+    solution.analyze();
+
+    let mut all_swaps: Vec<String> = swaps.iter().flat_map(|(a, b)| vec![a.to_string(), b.to_string()].into_iter()).collect();
+    all_swaps.sort();
+
+    println!("{}", all_swaps.join(","));
 }
 
 pub fn main() {
@@ -199,6 +397,7 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
 
     fn test_ignore_whitespaces(input: &str, output: &str) {
         let mut actual_out: Vec<u8> = Vec::new();
@@ -209,75 +408,17 @@ mod tests {
         assert_eq!(actual_outs, expected_outs);
     }
 
-    #[test]
-    fn sample1() {
-        test_ignore_whitespaces(
-            "x00: 1
-            x01: 1
-            x02: 1
-            y00: 0
-            y01: 1
-            y02: 0
-
-            x00 AND y00 -> z00
-            x01 XOR y01 -> z01
-            x02 OR y02 -> z02",
-            "4",
-        );
+    fn official_input() -> std::io::Lines<BufReader<File>> {
+        let file = File::open("input").unwrap();
+        BufReader::new(file).lines()
     }
 
     #[test]
-    fn sample2() {
-        test_ignore_whitespaces(
-            "x00: 1
-            x01: 0
-            x02: 1
-            x03: 1
-            x04: 0
-            y00: 1
-            y01: 1
-            y02: 1
-            y03: 1
-            y04: 1
-
-            ntg XOR fgs -> mjb
-            y02 OR x01 -> tnw
-            kwq OR kpj -> z05
-            x00 OR x03 -> fst
-            tgd XOR rvg -> z01
-            vdt OR tnw -> bfw
-            bfw AND frj -> z10
-            ffh OR nrd -> bqk
-            y00 AND y03 -> djm
-            y03 OR y00 -> psh
-            bqk OR frj -> z08
-            tnw OR fst -> frj
-            gnj AND tgd -> z11
-            bfw XOR mjb -> z00
-            x03 OR x00 -> vdt
-            gnj AND wpb -> z02
-            x04 AND y00 -> kjc
-            djm OR pbm -> qhw
-            nrd AND vdt -> hwm
-            kjc AND fst -> rvg
-            y04 OR y02 -> fgs
-            y01 AND x02 -> pbm
-            ntg OR kjc -> kwq
-            psh XOR fgs -> tgd
-            qhw XOR tgd -> z09
-            pbm OR djm -> kpj
-            x03 XOR y03 -> ffh
-            x00 XOR y04 -> ntg
-            bfw OR bqk -> z06
-            nrd XOR fgs -> wpb
-            frj XOR qhw -> z04
-            bqk OR frj -> z07
-            y03 OR x01 -> nrd
-            hwm AND bqk -> z03
-            tgd XOR rvg -> z12
-            tnw OR pbm -> gnj",
-            "2024",
-        );
+    fn adding() {
+        let sol = Solution::from_input(official_input().map(|l| l.unwrap()));
+        assert_eq!(sol.as_adder(1, 2), 3);
+        assert_eq!(sol.as_adder(1, 3), 4);
+        assert_eq!(sol.as_adder(10, 10), 20);
     }
 
     #[test]
